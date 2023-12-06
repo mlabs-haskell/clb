@@ -1,0 +1,92 @@
+cabal-version:   3.8
+name:            clb
+version:         0.0.1
+build-type:      Simple
+extra-doc-files: README.md
+license:         MIT
+maintainer:      ilia@mlabs.city
+author:          Ilia Rodionov, George Flerovsky
+synopsis:
+    The Cardano emulator that works AKA Cardano Ledger Backend (CLB),
+    pronounced /klʌb/.
+
+source-repository head
+    type:     git
+    location: https://github.com/mlabs-haskell/clb
+
+flag force-recomp
+  description: Compile with -fforce-recomp and -Wunused-packages
+  default:     False
+
+common common-lang
+
+  ghc-options:        -Wall -Wincomplete-uni-patterns
+  ghc-options:        -fno-show-valid-hole-fits
+
+  default-language:   GHC2021
+  default-extensions:
+    DataKinds
+    DeriveAnyClass
+    DerivingStrategies
+    DerivingVia
+    GADTs
+    LambdaCase
+    MultiWayIf
+    OverloadedStrings
+    RecordWildCards
+    RoleAnnotations
+    TemplateHaskell
+    TypeFamilies
+    UndecidableInstances
+    ViewPatterns
+
+  if flag(force-recomp)
+    ghc-options: -fforce-recomp -Wunused-packages
+
+library
+  import:           common-lang
+  exposed-modules:
+
+  build-depends:
+    , base                        ^>=4.16.4.0
+    , base16-bytestring           ^>=1.0.2.0
+    , bytestring                  ^>=0.11.4.0
+    , data-default                ^>=0.7.1.1
+    , containers                  ^>=0.6.5.1
+    , effectful                   ^>=2.3.0.0
+    , effectful-core              ^>=2.3.0.1
+    , effectful-plugin            ^>=1.1.0.2
+    , effectful-th                ^>=1.0.0.1
+    , mtl                         ^>=2.2.2
+    , lens                        ^>=5.2.3
+    , prettyprinter               ^>=1.7.1
+    , text                        ^>=2.0.2
+    , time                        ^>=1.11.1.1
+
+  build-depends:
+    , cardano-ledger-alonzo       ^>=1.5.1.0
+    , cardano-ledger-api          ^>=1.7.0.1
+    , cardano-ledger-babbage      ^>=1.5.1.0
+    , cardano-ledger-conway       ^>=1.11.0.0
+    , cardano-ledger-core         ^>=1.9.0.0
+    , cardano-ledger-shelley      ^>=1.8.0.0
+    , cardano-crypto-class        ^>=2.1.4.0
+    , cardano-slotting
+    , ouroboros-consensus-cardano ^>=0.12
+    , plutus-ledger-api           ^>=1.15.0.0
+
+  hs-source-dirs:   src
+  ghc-options: -fplugin=Effectful.Plugin
+
+executable smoke-test
+  import:           common-lang
+  ghc-options:      -threaded -rtsopts
+  main-is:          smoke-test.hs
+  build-depends:
+    , base
+    , clb
+
+  hs-source-dirs:   tests/smoke
+  other-modules:
+
+  default-language:   GHC2021
