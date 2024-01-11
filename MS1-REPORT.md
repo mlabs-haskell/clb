@@ -1,4 +1,4 @@
-# 1000121 MLabs - Enhancing and Evolving the Plutus Simple Model (PSM) Test Library - Milestone 1 Report and Proof of Achievement
+# 1000121 MLabs - Enhancing and Evolving the Plutus Simple Model (PSM) Test Library - Milestone 1 Report
 
 _Prepared by MLabs on Dec 15, 2023_\
 _Ilia Rodionov, ilia@mlabs.city_\
@@ -14,7 +14,7 @@ In the current report that concludes Milestone 1 of Catalyst Fund 10 project 100
 ## PSM: brief history recap
 Before addressing the existing forks, we’d like to set some initial context of the PSM library. Initially based on some ideas from the Sundae Swap project, PSM was released in late 2021 and since then the codebase has been developed and maintained by MLabs. As a separate tool, PSM was successfully used in several client/audit projects at MLabs, including Gero Wallet, Kwarxs, Equine, Indigo, Optim, JPG.Store and Atrium.
 
-PSM was created as a simple tool to evaluate Plutus scripts and budgets within more or less realistic transactions. This cannot be done by employing solely on-chain testing: we want to ensure the transactions as a whole fit the limits. This task sounded like a perfect fit for the Putus trace emulator, but unfortunately, back then it was not capable of evaluating Alonzo transactions with Plutus scripts correctly enough: it didn't use the real Plutus evaluator which led to wrong estimates. From day one PSM has been using the very same evaluator from `plutus-ledger-api` that the ledger and the node use; this allowed PSM to gain accuracy in estimates dApps developers needed.
+PSM was created as a simple tool to evaluate Plutus scripts and budgets within more or less realistic transactions. This cannot be done by employing solely on-chain testing: we want to ensure the transactions as a whole fit the limits. This task sounded like a perfect task for the Plutus trace emulator, but unfortunately, back then it was not capable of evaluating Alonzo transactions with Plutus scripts correctly enough: it didn't use the real Plutus evaluator which led to wrong estimates. From day one PSM has been using the very same evaluator from `plutus-ledger-api` that the ledger and the node use; this allowed PSM to gain accuracy in estimates dApps developers needed.
 
 At the same time, PSM has never made use of `cardano-ledger` to manage the state and transitions. Instead, PSM rolled out its own simplified state where only some basic checks (like the existence of UTxOs and signatures) took place. It was mostly fine for the initial tasks of budget estimation, but later some projects started using PSM as a full-fledged Cardano emulator: either for testing their happy paths or for auditing purposes.
 
@@ -35,14 +35,14 @@ Most projects that made use of PSM successfully upstreamed their changes back in
 
 Those changes highlight the issues that devs encountered while using the library within their projects.
 
-* Indigo PR: https://github.com/mlabs-haskell/plutus-simple-model/pull/116
+* Indigo PR: https://github.com/mlabs-haskell/plutus-simple-model/pull/116. PSM provides its own way to work on-chain scripts which is mostly well-typed. Indigo's team needed to use untyped calidators so, they added support to load compiled Plutus code as untyped validators and a corresponding transaction building function  to make use of them. While using untyped validators is generally considered undesired, some users may benefit from that since the untyped variant requires less effort.
 
-* Kwarx PR: https://github.com/mlabs-haskell/plutus-simple-model/pull/118
+* Kwarx PR: https://github.com/mlabs-haskell/plutus-simple-model/pull/118. This PR is mostly focused on updating dependencies of PSM.
 
 * Other contributions.
 Even though the following changes already have been merged into the main PSM codebase, we decided to list them here to represent a more detailed understanding of how projects use PSM:
-  * Atrium PR 1: https://github.com/mlabs-haskell/plutus-simple-model/pull/113
-   * Atrium PR 2: https://github.com/mlabs-haskell/plutus-simple-model/pull/114
+  * Atrium PR 1: https://github.com/mlabs-haskell/plutus-simple-model/pull/113. Brings additional facilities for applying paramteres to Plutarch scripts.
+  * Atrium PR 2: https://github.com/mlabs-haskell/plutus-simple-model/pull/114. Allows sending outputs with reference scripts to any kinds of addresses.
 
 ### Atlas PAB Fork
 
@@ -221,24 +221,3 @@ Finally, we need a way of setting up an emulator instance(s). Apart from physica
 As we saw, divergence in how these tasks are supposed to be done for different backends led to problems with test unification and we want to address this. We haven’t spent much time in this milestone on this topic; from what we know now we need to unify or abstract this part so backends can use them interchangeably.
 
 In most cases, audits (and regular testing alike) necessitate or benefit from running multiple instances, so we might want to provide some built-in machinery for spawning multiple cells that share the same configuration (parameters and genesis), but work in isolation.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
