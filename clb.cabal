@@ -7,7 +7,7 @@ license:         MIT
 maintainer:      ilia@mlabs.city
 author:          Ilia Rodionov, George Flerovsky
 synopsis:
-    The Cardano emulator that works AKA Cardano Ledger Backend (CLB),
+    The Cardano emulator that just works AKA Cardano Ledger Backend (CLB),
     pronounced /klʌb/.
 
 source-repository head
@@ -46,34 +46,49 @@ common common-lang
 library
   import:           common-lang
   exposed-modules:
+    Clb
+  other-modules:
+    Clb.ClbLedgerState
+    Clb.Era
+    Clb.MockConfig
+    Clb.Params
+    Clb.Slot
+    Clb.TimeSlot
+    Clb.Tx
 
   build-depends:
     , base                        ^>=4.16.4.0
     , base16-bytestring           ^>=1.0.2.0
     , bytestring                  ^>=0.11.4.0
-    , data-default                ^>=0.7.1.1
     , containers                  ^>=0.6.5.1
+    , data-default                ^>=0.7.1.1
     , effectful                   ^>=2.3.0.0
     , effectful-core              ^>=2.3.0.1
     , effectful-plugin            ^>=1.1.0.2
     , effectful-th                ^>=1.0.0.1
-    , mtl                         ^>=2.2.2
     , lens                        ^>=5.2.3
+    , mtl                         ^>=2.2.2
     , prettyprinter               ^>=1.7.1
     , text                        ^>=2.0.2
     , time                        ^>=1.11.1.1
+    , transformers                ^>=0.5.6.2
 
   build-depends:
-    , cardano-ledger-alonzo       ^>=1.5.1.0
-    , cardano-ledger-api          ^>=1.7.0.1
-    , cardano-ledger-babbage      ^>=1.5.1.0
-    , cardano-ledger-conway       ^>=1.11.0.0
-    , cardano-ledger-core         ^>=1.9.0.0
-    , cardano-ledger-shelley      ^>=1.8.0.0
-    , cardano-crypto-class        ^>=2.1.4.0
-    , cardano-slotting
-    , ouroboros-consensus-cardano ^>=0.12
-    , plutus-ledger-api           ^>=1.15.0.0
+    , cardano-api:{cardano-api, internal}                 ^>=8.37.1.0
+    , cardano-binary                                      ^>=1.7.1.0
+    , cardano-crypto-class                                ^>=2.1.4.0
+    , cardano-ledger-alonzo                               ^>=1.5.1.0
+    , cardano-ledger-api                                  ^>=1.7.0.1
+    , cardano-ledger-babbage                              ^>=1.5.1.0
+    , cardano-ledger-conway                               ^>=1.11.0.0
+    , cardano-ledger-core:{cardano-ledger-core, testlib}  ^>=1.9.0.0
+    , cardano-ledger-mary                                 ^>=1.4.0.0
+    , cardano-ledger-pretty                               ^>=1.3.3.1
+    , cardano-ledger-shelley                              ^>=1.8.0.0
+    , cardano-slotting                                    ^>=0.1.2.0
+    , ouroboros-consensus-cardano                         ^>=0.12
+    , plutus-ledger-api                                   ^>=1.15.0.0
+    , plutus-tx                                           ^>=1.15.0.0
 
   hs-source-dirs:   src
   ghc-options: -fplugin=Effectful.Plugin
@@ -85,8 +100,10 @@ executable smoke-test
   build-depends:
     , base
     , clb
+    , prettyprinter
+    , cardano-api:{cardano-api, internal}                 ^>=8.37.1.0
 
-  hs-source-dirs:   tests/smoke
+  hs-source-dirs:   test/smoke
   other-modules:
 
   default-language:   GHC2021
