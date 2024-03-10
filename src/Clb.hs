@@ -2,11 +2,16 @@
 {-# LANGUAGE RankNTypes #-}
 
 module Clb (
-  -- *
-  ClbState (..),
 
   -- * Parameters
   X.defaultBabbage,
+
+  -- * CLB Monad
+  Clb,
+
+  -- * CLB internals (revise)
+  ClbState (..),
+  EmulatedLedgerState (..),
 
   -- * CLB Runner
   initClb,
@@ -15,9 +20,19 @@ module Clb (
   -- * Actions
   txOutRefAt,
   txOutRefAtState,
+  -- FIXME: implement
+  txOutRefAtPaymentCred,
+
   sendTx,
+  ValidationResult (..),
+  OnChainTx(..),
 
   -- * Working with logs
+  LogEntry (LogEntry),
+  LogLevel (..),
+  Log (Log),
+  unLog,
+  fromLog,
   logInfo,
   logFail,
   logError,
@@ -27,6 +42,18 @@ module Clb (
   checkErrors,
   getFails,
   ppLog,
+
+  -- * Emulator configuration
+  MockConfig (..),
+  SlotConfig (..),
+
+  -- * Protocol parameters
+  PParams (..),
+  babbageOnly,
+
+  -- * key utils
+  intToKeyPair,
+
  )
  where
 
@@ -54,7 +81,7 @@ import Clb.ClbLedgerState (EmulatedLedgerState (..), initialState, setUtxo, memP
 import Clb.Era (EmulatorEra)
 import Clb.MockConfig (MockConfig (..))
 import Clb.Params (PParams(BabbageParams, AlonzoParams), mkGlobals, babbageOnly)
-import Clb.TimeSlot (slotLength)
+import Clb.TimeSlot (slotLength, SlotConfig(..))
 import Control.Lens (over, (.~), (&), (^.))
 import Control.Monad.Identity (Identity (runIdentity))
 import Control.Monad.State (State, MonadState (get), gets, runState, modify', put)
@@ -69,13 +96,13 @@ import Data.Sequence (Seq (..))
 import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Data.Text qualified as Text
-import PlutusLedgerApi.V1 qualified as P (Datum, DatumHash, TxOutRef)
+import PlutusLedgerApi.V1 qualified as P (Datum, DatumHash, TxOutRef, Credential)
 import PlutusLedgerApi.V1 qualified as PV1
 import PlutusLedgerApi.V1.Scripts qualified as P (ScriptError)
 import PlutusLedgerApi.V2 qualified as PV2
 import Prettyprinter (Pretty, pretty, colon, (<+>), indent, vcat, hang, vsep, fillSep, Doc )
 import Test.Cardano.Ledger.Core.KeyPair qualified as TL
-import Clb.Tx (OnChainTx (OnChainTx))
+import Clb.Tx (OnChainTx (..))
 import Clb.MockConfig qualified as X (defaultBabbage)
 import Cardano.Ledger.Pretty (ppLedgerState)
 import Data.Foldable (toList)
@@ -297,13 +324,13 @@ txOutRefAtState addr st = txInfoIn' <$> M.keys (M.filter atAddr utxos)
       -- Left should never happen (abuse of Either in fact)
       Left addr' -> addr == addr'
 
--- -- | Read all TxOutRefs that belong to given payment credential.
--- txOutRefAtPaymentCred :: P.Credential -> Clb [P.TxOutRef]
--- txOutRefAtPaymentCred cred = gets (txOutRefAtPaymentCredState cred)
+-- | Read all TxOutRefs that belong to given payment credential.
+txOutRefAtPaymentCred :: P.Credential -> Clb [P.TxOutRef]
+txOutRefAtPaymentCred cred = gets (txOutRefAtPaymentCredState cred)
 
--- -- | Read all TxOutRefs that belong to given payment credential.
--- txOutRefAtPaymentCredState :: P.Credential -> ClbState -> [P.TxOutRef]
--- txOutRefAtPaymentCredState _cred _st = undefined -- FIXME:
+-- | Read all TxOutRefs that belong to given payment credential.
+txOutRefAtPaymentCredState :: P.Credential -> ClbState -> [P.TxOutRef]
+txOutRefAtPaymentCredState _cred _st = undefined -- FIXME:
 
 sendTx :: C.Tx C.BabbageEra -> Clb ValidationResult
 sendTx apiTx@(C.ShelleyTx _ tx) = do -- FIXME: use patterns?
