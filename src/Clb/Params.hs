@@ -3,6 +3,7 @@ module Clb.Params where
 import Cardano.Api.Shelley qualified as C (shelleyGenesisDefaults)
 import Cardano.Ledger.Alonzo qualified as L (AlonzoEra)
 import Cardano.Ledger.Alonzo.Core qualified as L (CoinPerWord(CoinPerWord))
+import Cardano.Ledger.Alonzo.Language qualified as Alonzo
 import Cardano.Ledger.Alonzo.PParams qualified as Alonzo
 import Cardano.Ledger.Alonzo.Scripts qualified as Alonzo
 import Cardano.Ledger.Babbage qualified as L (BabbageEra)
@@ -11,7 +12,6 @@ import Cardano.Ledger.BaseTypes qualified as L
 import Cardano.Ledger.Coin qualified as L
 import Cardano.Ledger.Core qualified as L
 import Cardano.Ledger.Crypto qualified as L (StandardCrypto)
-import Cardano.Ledger.Plutus.Language qualified as Alonzo
 import Cardano.Ledger.Shelley.Genesis qualified as L (ShelleyGenesis, mkShelleyGlobals)
 import Cardano.Slotting.EpochInfo qualified as S (fixedEpochInfo)
 import Cardano.Slotting.Time qualified as S (SlotLength)

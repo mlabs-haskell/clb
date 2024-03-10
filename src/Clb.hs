@@ -45,7 +45,6 @@ import Cardano.Ledger.Compactible qualified as L
 import Cardano.Ledger.Core qualified as Core
 import Cardano.Ledger.Keys qualified as L
 import Cardano.Ledger.Mary (MaryValue)
-import Cardano.Ledger.Plutus.TxInfo (txInfoIn', transDataHash')
 import Cardano.Ledger.Pretty.Babbage ()
 import Cardano.Ledger.SafeHash qualified as L
 import Cardano.Ledger.Shelley.API qualified as L (LedgerState(..), UTxOState (utxosUtxo), StakeReference (..), applyTx)
@@ -70,7 +69,7 @@ import Data.Sequence (Seq (..))
 import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Data.Text qualified as Text
-import PlutusLedgerApi.V1 qualified as P (Datum, DatumHash, TxOutRef, Credential)
+import PlutusLedgerApi.V1 qualified as P (Datum, DatumHash, TxOutRef)
 import PlutusLedgerApi.V1 qualified as PV1
 import PlutusLedgerApi.V1.Scripts qualified as P (ScriptError)
 import PlutusLedgerApi.V2 qualified as PV2
@@ -80,6 +79,8 @@ import Clb.Tx (OnChainTx (OnChainTx))
 import Clb.MockConfig qualified as X (defaultBabbage)
 import Cardano.Ledger.Pretty (ppLedgerState)
 import Data.Foldable (toList)
+import Cardano.Ledger.Alonzo.TxInfo (txInfoIn', transDataHash')
+import qualified Cardano.Api.Byron as C
 
 --------------------------------------------------------------------------------
 -- Base emulator types
@@ -336,7 +337,7 @@ scriptDataFromCardanoTxBody
   :: C.TxBody era
   -- -> (Map P.DatumHash P.Datum, PV1.Redeemers)
   -> M.Map P.DatumHash P.Datum
--- scriptDataFromCardanoTxBody C.ByronTxBody {} = mempty
+scriptDataFromCardanoTxBody C.ByronTxBody {} = mempty
 scriptDataFromCardanoTxBody (C.ShelleyTxBody _ _ _ C.TxBodyNoScriptData _ _) = mempty
 scriptDataFromCardanoTxBody
   (C.ShelleyTxBody _ _ _ (C.TxBodyScriptData _ (L.TxDats' dats) _) _ _) =
