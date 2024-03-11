@@ -58,7 +58,6 @@ module Clb (
  where
 
 import Cardano.Api qualified as Api
-import Cardano.Api qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Binary qualified as CBOR
 import Cardano.Crypto.DSIGN qualified as Crypto
@@ -72,7 +71,7 @@ import Cardano.Ledger.Compactible qualified as L
 import Cardano.Ledger.Core qualified as Core
 import Cardano.Ledger.Keys qualified as L
 import Cardano.Ledger.Mary (MaryValue)
-import Cardano.Ledger.Pretty.Babbage ()
+import Cardano.Ledger.Plutus.TxInfo (transTxIn, transDataHash)
 import Cardano.Ledger.SafeHash qualified as L
 import Cardano.Ledger.Shelley.API qualified as L (LedgerState(..), UTxOState (utxosUtxo), StakeReference (..), applyTx)
 import Cardano.Ledger.TxIn qualified as L (TxId (..), TxIn (..), mkTxInPartial)
@@ -80,14 +79,17 @@ import Cardano.Ledger.UTxO qualified as L (UTxO (..))
 import Clb.ClbLedgerState (EmulatedLedgerState (..), initialState, setUtxo, memPoolState, currentBlock)
 import Clb.Era (EmulatorEra)
 import Clb.MockConfig (MockConfig (..))
+import Clb.MockConfig qualified as X (defaultBabbage)
 import Clb.Params (PParams(BabbageParams, AlonzoParams), mkGlobals, babbageOnly)
 import Clb.TimeSlot (slotLength, SlotConfig(..))
+import Clb.Tx (OnChainTx (..))
 import Control.Lens (over, (.~), (&), (^.))
 import Control.Monad.Identity (Identity (runIdentity))
 import Control.Monad.State (State, MonadState (get), gets, runState, modify', put)
 import Control.Monad.Trans.Maybe (MaybeT(runMaybeT))
 import Data.Bifunctor (first)
 import Data.Char (isSpace)
+import Data.Foldable (toList)
 import Data.Function (on)
 import Data.List
 import Data.Map qualified as M
@@ -102,13 +104,8 @@ import PlutusLedgerApi.V1.Scripts qualified as P (ScriptError)
 import PlutusLedgerApi.V2 qualified as PV2
 import Prettyprinter (Pretty, pretty, colon, (<+>), indent, vcat, hang, vsep, fillSep, Doc )
 import Test.Cardano.Ledger.Core.KeyPair qualified as TL
-import Clb.Tx (OnChainTx (..))
-import Clb.MockConfig qualified as X (defaultBabbage)
-import Cardano.Ledger.Pretty (ppLedgerState)
-import Data.Foldable (toList)
-import Cardano.Ledger.Alonzo.TxInfo (txInfoIn', transDataHash')
-import qualified Cardano.Api.Byron as C
-
+import Test.Cardano.Ledger.Generic.PrettyCore (psLedgerState)
+import Test.Cardano.Ledger.Generic.Proof qualified as Proof
 --------------------------------------------------------------------------------
 -- Base emulator types
 --------------------------------------------------------------------------------
@@ -314,7 +311,7 @@ txOutRefAt addr = gets (txOutRefAtState $ C.toShelleyAddr addr)
 
 -- | Read all TxOutRefs that belong to given address.
 txOutRefAtState :: L.Addr L.StandardCrypto -> ClbState -> [P.TxOutRef]
-txOutRefAtState addr st = txInfoIn' <$> M.keys (M.filter atAddr utxos)
+txOutRefAtState addr st = transTxIn <$> M.keys (M.filter atAddr utxos)
   where
     utxos = L.unUTxO $ L.utxosUtxo $ L.lsUTxOState $ _memPoolState $ emulatedLedgerState st
 
@@ -364,7 +361,6 @@ scriptDataFromCardanoTxBody
   :: C.TxBody era
   -- -> (Map P.DatumHash P.Datum, PV1.Redeemers)
   -> M.Map P.DatumHash P.Datum
-scriptDataFromCardanoTxBody C.ByronTxBody {} = mempty
 scriptDataFromCardanoTxBody (C.ShelleyTxBody _ _ _ C.TxBodyNoScriptData _ _) = mempty
 scriptDataFromCardanoTxBody
   (C.ShelleyTxBody _ _ _ (C.TxBodyScriptData _ (L.TxDats' dats) _) _ _) =
@@ -383,12 +379,12 @@ fromCardanoScriptData = PV1.dataToBuiltinData . C.toPlutusData
 
 datumHash :: PV2.Datum -> PV2.DatumHash
 datumHash (PV2.Datum (PV2.BuiltinData dat)) =
-  transDataHash' $ L.hashData $ L.Data @(L.AlonzoEra L.StandardCrypto) dat
+  transDataHash $ L.hashData $ L.Data @(L.AlonzoEra L.StandardCrypto) dat
 
 dumpUtxoState :: Clb ()
 dumpUtxoState = do
   s <- gets ((^. memPoolState) . emulatedLedgerState)
-  let dump = show $ ppLedgerState s
+  let dump = show $ psLedgerState Proof.Babbage s
   logInfo $ LogEntry Info dump
 
 --------------------------------------------------------------------------------
