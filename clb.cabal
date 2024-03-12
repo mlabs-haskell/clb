@@ -1,11 +1,11 @@
 cabal-version:   3.8
 name:            clb
-version:         0.0.1
+version:         1.0.0
 build-type:      Simple
 extra-doc-files: README.md
 license:         MIT
 maintainer:      ilia@mlabs.city
-author:          Ilia Rodionov, George Flerovsky
+author:          Ilia Rodionov, Gregory Gerasev, George Flerovsky
 synopsis:
     The Cardano emulator that just works AKA Cardano Ledger Backend (CLB),
     pronounced /klʌb/.
@@ -99,7 +99,7 @@ executable smoke-test
     , base
     , clb
     , prettyprinter
-    , cardano-api:{cardano-api, internal}                 ==8.38.0.0
+    , cardano-api:{cardano-api, internal}
 
   hs-source-dirs:   test/smoke
   other-modules:
