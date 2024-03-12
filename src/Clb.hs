@@ -27,6 +27,9 @@ module Clb (
   ValidationResult (..),
   OnChainTx(..),
 
+  -- * Utils
+  getCurrentSlot,
+
   -- * Working with logs
   LogEntry (LogEntry),
   LogLevel (..),
@@ -74,7 +77,7 @@ import Cardano.Ledger.Keys qualified as L
 import Cardano.Ledger.Mary (MaryValue)
 import Cardano.Ledger.Pretty.Babbage ()
 import Cardano.Ledger.SafeHash qualified as L
-import Cardano.Ledger.Shelley.API qualified as L (LedgerState(..), UTxOState (utxosUtxo), StakeReference (..), applyTx)
+import Cardano.Ledger.Shelley.API qualified as L (ledgerSlotNo, LedgerState(..), UTxOState (utxosUtxo), StakeReference (..), applyTx)
 import Cardano.Ledger.TxIn qualified as L (TxId (..), TxIn (..), mkTxInPartial)
 import Cardano.Ledger.UTxO qualified as L (UTxO (..))
 import Clb.ClbLedgerState (EmulatedLedgerState (..), initialState, setUtxo, memPoolState, currentBlock)
@@ -152,10 +155,10 @@ newtype Clb a = Clb (State ClbState a)
 data ClbState = ClbState
   { emulatedLedgerState :: !EmulatedLedgerState
   , mockConfig          :: !MockConfig
+  -- FIXME: rename, this is non-inline dataums cache
   , mockDatums          :: !(M.Map P.DatumHash P.Datum)
   , mockInfo            :: !(Log LogEntry)
   , mockFails           :: !(Log FailReason)
-  , mockCurrentSlot     :: !Slot -- FIXME: sync up with emulatedLedgerState
   }
 
 data LogEntry =
@@ -204,7 +207,6 @@ initClb
       { emulatedLedgerState = setUtxo pparams utxos (initialState params)
       , mockDatums = M.empty
       , mockConfig = cfg
-      , mockCurrentSlot = Slot 1
       , mockInfo = mempty
       , mockFails = mempty
       }
@@ -286,6 +288,9 @@ instance Pretty Slot where
 -- Actions in Clb monad
 --------------------------------------------------------------------------------
 
+getCurrentSlot :: Clb C.SlotNo
+getCurrentSlot = gets (L.ledgerSlotNo . _ledgerEnv . emulatedLedgerState)
+
 -- | Log a generic (non-typed) error.
 logError :: String -> Clb ()
 logError msg = do
@@ -295,14 +300,16 @@ logError msg = do
 -- | Add a non-error log enty.
 logInfo :: LogEntry -> Clb ()
 logInfo le = do
-  slot <- gets mockCurrentSlot
+  C.SlotNo slotNo <- getCurrentSlot
+  let slot = Slot $ toInteger slotNo
   modify' $ \s -> s {mockInfo = appendLog slot le (mockInfo s)}
 
 -- | Log failure.
 logFail :: FailReason -> Clb ()
 logFail res = do
-  curTime <- gets mockCurrentSlot
-  modify' $ \s -> s {mockFails = appendLog curTime res (mockFails s)}
+  C.SlotNo slotNo <- getCurrentSlot
+  let slot = Slot $ toInteger slotNo
+  modify' $ \s -> s {mockFails = appendLog slot res (mockFails s)}
 
 -- | Insert event to log
 appendLog :: Slot -> a -> Log a -> Log a

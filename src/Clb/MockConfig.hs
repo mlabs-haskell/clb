@@ -14,6 +14,7 @@ module Clb.MockConfig (
   forceLimits,
 ) where
 
+import Cardano.Api qualified as C
 import Cardano.Ledger.BaseTypes qualified as L
 import Clb.Params
     ( PParams, defaultBabbageParams, defaultAlonzoParams )
@@ -25,7 +26,7 @@ data MockConfig = MockConfig
   -- ^ limits check mode
   , mockConfigProtocol :: !PParams
   -- ^ Protocol parameters
-  , mockConfigNetworkId :: !L.Network
+  , mockConfigNetworkId :: !C.NetworkId
   -- ^ Network id (mainnet / testnet)
   , mockConfigSlotConfig :: !SlotConfig
   -- ^ Slot config
@@ -66,7 +67,7 @@ defaultMockConfig params =
   MockConfig
     { mockConfigCheckLimits = ErrorLimits
     , mockConfigProtocol = params
-    , mockConfigNetworkId = L.Testnet
+    , mockConfigNetworkId = C.Testnet $ C.NetworkMagic 42
     , mockConfigSlotConfig = defaultSlotConfig
     }
 
