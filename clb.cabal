@@ -71,22 +71,22 @@ library
     , transformers                ^>=0.6.1.0
 
   build-depends:
-    , cardano-api:{cardano-api, internal}                 ==8.38.0.0
-    , cardano-binary                                      ==1.7.1.0
-    , cardano-crypto-class                                ==2.1.4.0
-    , cardano-ledger-alonzo                               ==1.6.0.0
-    , cardano-ledger-api                                  ==1.8.0.0
-    , cardano-ledger-babbage                              ==1.6.0.0
-    , cardano-ledger-core:{cardano-ledger-core, testlib}  ==1.10.0.0
-    , cardano-ledger-mary                                 ==1.5.0.0
-    , cardano-ledger-shelley                              ==1.9.0.0
-    , cardano-ledger-test                                 ==9.9.9.9
-    , cardano-slotting                                    ==0.1.2.0
-    , ouroboros-consensus-cardano                         ==0.13.0.0
-    , plutus-core                                         ==1.21.0.0
-    , plutus-ledger-api                                   ==1.21.0.0
-    , plutus-tx                                           ==1.21.0.0
-    , cardano-ledger-binary                               ==1.3.0.0
+    , cardano-api:{cardano-api, internal}
+    , cardano-binary
+    , cardano-crypto-class
+    , cardano-ledger-alonzo
+    , cardano-ledger-api
+    , cardano-ledger-babbage
+    , cardano-ledger-binary
+    , cardano-ledger-core:{cardano-ledger-core, testlib}
+    , cardano-ledger-mary
+    , cardano-ledger-shelley
+    , cardano-ledger-test
+    , cardano-slotting
+    , ouroboros-consensus-cardano
+    , plutus-core
+    , plutus-ledger-api
+    , plutus-tx
 
   hs-source-dirs:   src
 
