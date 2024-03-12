@@ -16,8 +16,11 @@ module Clb.MockConfig (
 
 import Cardano.Api qualified as C
 import Cardano.Ledger.BaseTypes qualified as L
-import Clb.Params
-    ( PParams, defaultBabbageParams, defaultAlonzoParams )
+import Clb.Params (
+  PParams,
+  defaultAlonzoParams,
+  defaultBabbageParams,
+ )
 import Clb.TimeSlot
 
 -- | Config for the blockchain.

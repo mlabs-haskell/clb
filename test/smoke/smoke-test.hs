@@ -1,8 +1,9 @@
 module Main where
 
+import Cardano.Api (Lovelace (Lovelace), lovelaceToValue)
 import Clb (
-  checkErrors,
   ClbState (mockInfo),
+  checkErrors,
   defaultBabbage,
   dumpUtxoState,
   initClb,
@@ -10,9 +11,7 @@ import Clb (
   runClb,
  )
 import Prettyprinter
-import Cardano.Api (lovelaceToValue, Lovelace (Lovelace))
 import Prettyprinter.Render.String (renderString)
-
 
 main :: IO ()
 main = do
@@ -20,10 +19,10 @@ main = do
   let _dummyTotalNotUsedNow = lovelaceToValue $ Lovelace 1_000_000_000_000
   let perWallet = lovelaceToValue $ Lovelace 1_000_000_000
   let (_mbErrors, clb) =
-        runClb (dumpUtxoState >> checkErrors)
-          $ initClb defaultBabbage _dummyTotalNotUsedNow perWallet
+        runClb (dumpUtxoState >> checkErrors) $
+          initClb defaultBabbage _dummyTotalNotUsedNow perWallet
   let logDoc = ppLog $ mockInfo clb
-  let options = defaultLayoutOptions { layoutPageWidth = AvailablePerLine 150 1.0}
+  let options = defaultLayoutOptions {layoutPageWidth = AvailablePerLine 150 1.0}
   let logString = renderString $ layoutPretty options logDoc
   let mockLog = "\nEmulator log :\n--------------\n" <> logString
   putStrLn mockLog
