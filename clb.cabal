@@ -48,13 +48,14 @@ library
   import:           common-lang
   exposed-modules:
     Clb
-  other-modules:
     Clb.ClbLedgerState
-    Clb.Era
     Clb.MockConfig
+    Clb.TimeSlot
+
+  other-modules:
+    Clb.Era
     Clb.Params
     Clb.Slot
-    Clb.TimeSlot
     Clb.Tx
 
   build-depends:
