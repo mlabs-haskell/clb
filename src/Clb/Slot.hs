@@ -28,8 +28,8 @@ module Clb.Slot (
 -- import Data.Hashable (Hashable)
 import GHC.Generics (Generic)
 import Prettyprinter (Pretty (pretty), (<+>))
-import Prelude qualified as Haskell
 import Prelude
+import Prelude qualified as Haskell
 
 -- import PlutusTx qualified
 -- import PlutusTx.Lift (makeLift)
@@ -48,7 +48,8 @@ newtype Slot = Slot {getSlot :: Haskell.Integer}
   -- deriving anyclass (FromJSON, FromJSONKey, ToJSON, ToJSONKey, NFData)
   -- deriving newtype (AdditiveSemigroup, AdditiveMonoid, AdditiveGroup, Eq, Ord, Enum, PlutusTx.ToData, PlutusTx.FromData, PlutusTx.UnsafeFromData)
   deriving newtype (Haskell.Num, Haskell.Enum, Haskell.Real, Haskell.Integral)
-  -- deriving newtype (Haskell.Num, Haskell.Enum, Haskell.Real, Haskell.Integral, Serialise, Hashable)
+
+-- deriving newtype (Haskell.Num, Haskell.Enum, Haskell.Real, Haskell.Integral, Serialise, Hashable)
 
 -- makeLift ''Slot
 

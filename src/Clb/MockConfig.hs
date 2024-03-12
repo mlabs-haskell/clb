@@ -14,10 +14,12 @@ module Clb.MockConfig (
   forceLimits,
 ) where
 
-import Cardano.Ledger.BaseTypes qualified as L
 import Cardano.Api qualified as C
-import Clb.Params
-    ( PParams, defaultBabbageParams, defaultAlonzoParams )
+import Clb.Params (
+  PParams,
+  defaultAlonzoParams,
+  defaultBabbageParams,
+ )
 import Clb.TimeSlot
 
 -- | Config for the blockchain.

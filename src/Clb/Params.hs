@@ -2,8 +2,7 @@ module Clb.Params where
 
 import Cardano.Api.Shelley qualified as C (shelleyGenesisDefaults)
 import Cardano.Ledger.Alonzo qualified as L (AlonzoEra)
-import Cardano.Ledger.Alonzo.Core qualified as L (CoinPerWord(CoinPerWord))
-import Cardano.Ledger.Plutus.Language qualified as Plutus
+import Cardano.Ledger.Alonzo.Core qualified as L (CoinPerWord (CoinPerWord))
 import Cardano.Ledger.Alonzo.PParams qualified as Alonzo
 import Cardano.Ledger.Alonzo.Scripts qualified as Alonzo
 import Cardano.Ledger.Babbage qualified as L (BabbageEra)
@@ -12,6 +11,7 @@ import Cardano.Ledger.BaseTypes qualified as L
 import Cardano.Ledger.Coin qualified as L
 import Cardano.Ledger.Core qualified as L
 import Cardano.Ledger.Crypto qualified as L (StandardCrypto)
+import Cardano.Ledger.Plutus.Language qualified as Plutus
 import Cardano.Ledger.Shelley.Genesis qualified as L (ShelleyGenesis, mkShelleyGlobals)
 import Cardano.Slotting.EpochInfo qualified as S (fixedEpochInfo)
 import Cardano.Slotting.Time qualified as S (SlotLength)
@@ -20,7 +20,6 @@ import Data.Either (fromRight)
 import Data.Functor.Identity (Identity)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromJust)
-
 
 -- | Type that unifies protocol parameters across eras.
 data PParams
@@ -60,7 +59,7 @@ defaultAlonzoParams' =
         , Alonzo.appExtraEntropy = L.NeutralNonce
         , Alonzo.appProtocolVersion = L.ProtVer {L.pvMajor = L.eraProtVerHigh @(L.AlonzoEra L.StandardCrypto), L.pvMinor = 0}
         , Alonzo.appMinPoolCost = L.Coin 340_000_000
-        , Alonzo.appCoinsPerUTxOWord = L.CoinPerWord (L.Coin 34482)  -- When updated to babbage, it will divide it by 8 and round down, thus giving correct value.
+        , Alonzo.appCoinsPerUTxOWord = L.CoinPerWord (L.Coin 34482) -- When updated to babbage, it will divide it by 8 and round down, thus giving correct value.
         , Alonzo.appCostModels = defaultCostModels
         , Alonzo.appPrices =
             Alonzo.Prices
@@ -73,30 +72,34 @@ defaultAlonzoParams' =
         , Alonzo.appCollateralPercentage = 150
         , Alonzo.appMaxCollateralInputs = 3
         }
-  in coerce app
+   in
+    coerce app
 
-rational :: L.BoundedRational r => Rational -> r
+rational :: (L.BoundedRational r) => Rational -> r
 rational = fromJust . L.boundRational
 
 defaultBabbageParams' :: L.PParams (L.BabbageEra L.StandardCrypto)
 defaultBabbageParams' = L.upgradePParams () defaultAlonzoParams'
 
 defaultCostModels :: Alonzo.CostModels
-defaultCostModels = Alonzo.mkCostModels $
-  Map.fromList $
-    fmap toCostModel
-      [ Plutus.PlutusV1
-      , Plutus.PlutusV2]
+defaultCostModels =
+  Alonzo.mkCostModels $
+    Map.fromList $
+      fmap
+        toCostModel
+        [ Plutus.PlutusV1
+        , Plutus.PlutusV2
+        ]
   where
     toCostModel lang =
       ( lang
       , fromRight
-          (error "Cost model apply fail") $
-          Alonzo.mkCostModel lang $
-            case lang of
-              Plutus.PlutusV1 -> [205665,812,1,1,1000,571,0,1,1000,24177,4,1,1000,32,117366,10475,4,23000,100,23000,100,23000,100,23000,100,23000,100,23000,100,100,100,23000,100,19537,32,175354,32,46417,4,221973,511,0,1,89141,32,497525,14068,4,2,196500,453240,220,0,1,1,1000,28662,4,2,245000,216773,62,1,1060367,12586,1,208512,421,1,187000,1000,52998,1,80436,32,43249,32,1000,32,80556,1,57667,4,1000,10,197145,156,1,197145,156,1,204924,473,1,208896,511,1,52467,32,64832,32,65493,32,22558,32,16563,32,76511,32,196500,453240,220,0,1,1,69522,11687,0,1,60091,32,196500,453240,220,0,1,1,196500,453240,220,0,1,1,806990,30482,4,1927926,82523,4,265318,0,4,0,85931,32,205665,812,1,1,41182,32,212342,32,31220,32,32696,32,43357,32,32247,32,38314,32,57996947,18975,10]
-              Plutus.PlutusV2 -> [205665,812,1,1,1000,571,0,1,1000,24177,4,1,1000,32,117366,10475,4,23000,100,23000,100,23000,100,23000,100,23000,100,23000,100,100,100,23000,100,19537,32,175354,32,46417,4,221973,511,0,1,89141,32,497525,14068,4,2,196500,453240,220,0,1,1,1000,28662,4,2,245000,216773,62,1,1060367,12586,1,208512,421,1,187000,1000,52998,1,80436,32,43249,32,1000,32,80556,1,57667,4,1000,10,197145,156,1,197145,156,1,204924,473,1,208896,511,1,52467,32,64832,32,65493,32,22558,32,16563,32,76511,32,196500,453240,220,0,1,1,69522,11687,0,1,60091,32,196500,453240,220,0,1,1,196500,453240,220,0,1,1,1159724,392670,0,2,806990,30482,4,1927926,82523,4,265318,0,4,0,85931,32,205665,812,1,1,41182,32,212342,32,31220,32,32696,32,43357,32,32247,32,38314,32,35892428,10,57996947,18975,10,38887044,32947,10]
-              Plutus.PlutusV3 -> error "PlutusV3 is not yet supported."
+          (error "Cost model apply fail")
+          $ Alonzo.mkCostModel lang
+          $ case lang of
+            Plutus.PlutusV1 -> [205665, 812, 1, 1, 1000, 571, 0, 1, 1000, 24177, 4, 1, 1000, 32, 117366, 10475, 4, 23000, 100, 23000, 100, 23000, 100, 23000, 100, 23000, 100, 23000, 100, 100, 100, 23000, 100, 19537, 32, 175354, 32, 46417, 4, 221973, 511, 0, 1, 89141, 32, 497525, 14068, 4, 2, 196500, 453240, 220, 0, 1, 1, 1000, 28662, 4, 2, 245000, 216773, 62, 1, 1060367, 12586, 1, 208512, 421, 1, 187000, 1000, 52998, 1, 80436, 32, 43249, 32, 1000, 32, 80556, 1, 57667, 4, 1000, 10, 197145, 156, 1, 197145, 156, 1, 204924, 473, 1, 208896, 511, 1, 52467, 32, 64832, 32, 65493, 32, 22558, 32, 16563, 32, 76511, 32, 196500, 453240, 220, 0, 1, 1, 69522, 11687, 0, 1, 60091, 32, 196500, 453240, 220, 0, 1, 1, 196500, 453240, 220, 0, 1, 1, 806990, 30482, 4, 1927926, 82523, 4, 265318, 0, 4, 0, 85931, 32, 205665, 812, 1, 1, 41182, 32, 212342, 32, 31220, 32, 32696, 32, 43357, 32, 32247, 32, 38314, 32, 57996947, 18975, 10]
+            Plutus.PlutusV2 -> [205665, 812, 1, 1, 1000, 571, 0, 1, 1000, 24177, 4, 1, 1000, 32, 117366, 10475, 4, 23000, 100, 23000, 100, 23000, 100, 23000, 100, 23000, 100, 23000, 100, 100, 100, 23000, 100, 19537, 32, 175354, 32, 46417, 4, 221973, 511, 0, 1, 89141, 32, 497525, 14068, 4, 2, 196500, 453240, 220, 0, 1, 1, 1000, 28662, 4, 2, 245000, 216773, 62, 1, 1060367, 12586, 1, 208512, 421, 1, 187000, 1000, 52998, 1, 80436, 32, 43249, 32, 1000, 32, 80556, 1, 57667, 4, 1000, 10, 197145, 156, 1, 197145, 156, 1, 204924, 473, 1, 208896, 511, 1, 52467, 32, 64832, 32, 65493, 32, 22558, 32, 16563, 32, 76511, 32, 196500, 453240, 220, 0, 1, 1, 69522, 11687, 0, 1, 60091, 32, 196500, 453240, 220, 0, 1, 1, 196500, 453240, 220, 0, 1, 1, 1159724, 392670, 0, 2, 806990, 30482, 4, 1927926, 82523, 4, 265318, 0, 4, 0, 85931, 32, 205665, 812, 1, 1, 41182, 32, 212342, 32, 31220, 32, 32696, 32, 43357, 32, 32247, 32, 38314, 32, 35892428, 10, 57996947, 18975, 10, 38887044, 32947, 10]
+            Plutus.PlutusV3 -> error "PlutusV3 is not yet supported."
       )
 
 -- Babbage
@@ -105,18 +108,19 @@ defaultCostModels = Alonzo.mkCostModels $
 defaultBabbageParams :: PParams
 defaultBabbageParams =
   let old = coerce defaultBabbageParams'
-  in
-    BabbageParams
-      $ coerce $ old
-        { Babbage.bppProtocolVersion =
-            L.ProtVer {pvMajor = L.eraProtVerHigh @(L.BabbageEra L.StandardCrypto), pvMinor = 0}
-        }
+   in BabbageParams $
+        coerce $
+          old
+            { Babbage.bppProtocolVersion =
+                L.ProtVer {pvMajor = L.eraProtVerHigh @(L.BabbageEra L.StandardCrypto), pvMinor = 0}
+            }
 
 -- | A sensible default 'Globals' value for the emulator
 mkGlobals :: S.SlotLength -> L.Version -> L.Globals
-mkGlobals sLength = L.mkShelleyGlobals
-  genesisDefaultsFromParams
-  (S.fixedEpochInfo emulatorEpochSize sLength)
+mkGlobals sLength =
+  L.mkShelleyGlobals
+    genesisDefaultsFromParams
+    (S.fixedEpochInfo emulatorEpochSize sLength)
 
 genesisDefaultsFromParams :: L.ShelleyGenesis L.StandardCrypto
 genesisDefaultsFromParams = C.shelleyGenesisDefaults -- FIXME:
@@ -124,5 +128,3 @@ genesisDefaultsFromParams = C.shelleyGenesisDefaults -- FIXME:
 -- | A sensible default 'EpochSize' value for the emulator
 emulatorEpochSize :: L.EpochSize
 emulatorEpochSize = L.EpochSize 432000
-
-
