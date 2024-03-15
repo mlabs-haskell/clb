@@ -1,6 +1,5 @@
 -- | Config for emulator (from PSM)
 module Clb.MockConfig (
-  -- Stat (..),
   MockConfig (..),
   CheckLimits (..),
   defaultSlotConfig,
@@ -15,7 +14,6 @@ module Clb.MockConfig (
 ) where
 
 import Cardano.Api qualified as C
-import Cardano.Ledger.BaseTypes qualified as L
 import Clb.Params (
   PParams,
   defaultAlonzoParams,
@@ -30,7 +28,7 @@ data MockConfig = MockConfig
   , mockConfigProtocol :: !PParams
   -- ^ Protocol parameters
   , mockConfigNetworkId :: !C.NetworkId
-  -- ^ Network id (mainnet / testnet)
+  -- ^ Network id
   , mockConfigSlotConfig :: !SlotConfig
   -- ^ Slot config
   }

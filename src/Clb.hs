@@ -22,6 +22,7 @@ module Clb (
   -- FIXME: implement
   txOutRefAtPaymentCred,
   sendTx,
+  waitSlot,
   ValidationResult (..),
   OnChainTx (..),
 
@@ -78,9 +79,10 @@ import Cardano.Ledger.Pretty (ppLedgerState)
 import Cardano.Ledger.Pretty.Babbage ()
 import Cardano.Ledger.SafeHash qualified as L
 import Cardano.Ledger.Shelley.API qualified as L (LedgerState (..), StakeReference (..), UTxOState (utxosUtxo), applyTx, ledgerSlotNo)
+import Cardano.Ledger.Slot (SlotNo)
 import Cardano.Ledger.TxIn qualified as L (TxId (..), TxIn (..), mkTxInPartial)
 import Cardano.Ledger.UTxO qualified as L (UTxO (..))
-import Clb.ClbLedgerState (EmulatedLedgerState (..), currentBlock, initialState, memPoolState, setUtxo)
+import Clb.ClbLedgerState (EmulatedLedgerState (..), currentBlock, initialState, ledgerEnv, memPoolState, nextSlot, setSlot, setUtxo)
 import Clb.Era (EmulatorEra)
 import Clb.MockConfig (MockConfig (..))
 import Clb.MockConfig qualified as X (defaultBabbage)
@@ -89,7 +91,7 @@ import Clb.TimeSlot (SlotConfig (..), slotLength)
 import Clb.Tx (OnChainTx (..))
 import Control.Lens (over, (&), (.~), (^.))
 import Control.Monad.Identity (Identity (runIdentity))
-import Control.Monad.State (MonadState (get), State, gets, modify', put, runState)
+import Control.Monad.State (MonadState (get), State, gets, modify, modify', put, runState)
 import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
 import Data.Bifunctor (first)
 import Data.Char (isSpace)
@@ -364,7 +366,8 @@ sendTx apiTx@(C.ShelleyTx _ tx) = do
       let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
       put $
         state
-          { emulatedLedgerState = newState
+          { -- TODO: introduce slot modes
+            emulatedLedgerState = nextSlot newState
           , mockDatums = M.union mockDatums txDatums
           }
     FailPhase1 {} -> pure ()
@@ -478,3 +481,21 @@ intToKeyPair n = TL.KeyPair vk sk
     mkSeedFromInteger stuff =
       Crypto.mkSeedFromBytes . Crypto.hashToBytes $
         Crypto.hashWithSerialiser @Crypto.Blake2b_256 CBOR.toCBOR stuff
+
+waitSlot :: SlotNo -> Clb ()
+waitSlot slot = do
+  currSlot <- gets (L.ledgerSlotNo . (^. ledgerEnv) . emulatedLedgerState)
+  -- TODO: shall we throw?
+  if currSlot < slot
+    then modify $ \s@ClbState {emulatedLedgerState = state} -> s {emulatedLedgerState = setSlot slot state}
+    else pure ()
+
+-- TODO: implement
+-- pure ()
+-- now <- slotOfCurrentBlock
+-- let d = slotToInteger slot - slotToInteger now
+-- if | d < 0     -> fail $ printf "can't wait for slot %d, because current slot is %d" (slotToInteger slot) (slotToInteger now)
+--    | d == 0    -> return ()
+--    | otherwise -> liftRun $ waitNSlots $ Fork.Slot d
+
+-- undefined
