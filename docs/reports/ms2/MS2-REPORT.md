@@ -5,8 +5,8 @@ _Ilia Rodionov, ilia@mlabs.city_
 
 ## Overview
 
-In this milestone we worked on the minimal implementation on the CLB emulator.
-To demostrate how it works we took `bet-ref` example from original Atlas
+In this milestone, we worked on the minimal implementation of the CLB emulator.
+To demonstrate it works we took `bet-ref` example from the original Atlas'
 [examples repository](https://github.com/geniusyield/atlas-examples) and get it to work in two variants:
 * PSM-based version using original Atlas and Atlas' fork of PSM;
 * CLB-based version based on brand-new CLB emulator.
@@ -14,7 +14,7 @@ To demostrate how it works we took `bet-ref` example from original Atlas
 ## Outputs
 
 Outputs of the milestone can be found here:
-* CLB implementation in `master` branch in [mlabs-haskell/clb](https://github.com/mlabs-haskell/clb) repository;
+* CLB implementation in the `master` branch in [mlabs-haskell/clb](https://github.com/mlabs-haskell/clb) repository;
 * A fork of Atlas PAB that uses CLB instead of PSM along with the test suite in `clb-ms2` branch in [mlabs-haskell/atlas](https://github.com/mlabs-haskell/atlas) repository.
 
 Additionally:
@@ -22,16 +22,18 @@ Additionally:
 
 ## Acceptance criteria and evidence
 
-Traces obstained with [PSM](https://github.com/mlabs-haskell/clb/tree/master/docs/reports/ms2/bet-ref-psm.out)
-and [CLB](https://github.com/mlabs-haskell/clb/tree/master/docs/reports/ms2/bet-ref-clb.out) witness that both emulators works. Also they demostrate advantages of CLB in fees and storage costs calculations. The amount of tests don't allow to interpret results as a full-fledged benchmark, but it's clear that CLB is not slower than PSM (and we still use `StadardCrypto`, so we can eliminate some cryptographic calculations to boost the performance).
+Traces obtained with [PSM](https://github.com/mlabs-haskell/clb/tree/master/docs/reports/ms2/bet-ref-psm.out)
+and [CLB](https://github.com/mlabs-haskell/clb/tree/master/docs/reports/ms2/bet-ref-clb.out) witness that both emulators works. Also, they demonstrate the advantages of CLB in fees and storage costs calculations. The number of tests doesn't allow us to interpret results as a full-fledged benchmark, but it's clear that CLB is not slower than PSM (and we still use `StadardCrypto`, so we can eliminate some cryptographic calculations to boost the performance).
 
 
 ## Notes
 
-Additionally we decided to start using CLB
+Additionally, we decided to start using CLB
 in another Catalyst Fund10 project 1000118 CEM Script.
-Initilly the project chose PSM for testing,
-but now it became obvious we want to switch to the new emulator.
+Initially, the project chose PSM for testing,
+but now it has become obvious we want to switch to the new emulator.
 
 We believe it will be fruitful for both projects.
-Currently we maintain a separate version of CLB for CEM, since versions of core libraries used by CEM is more recent that onces currently used by Atlas. Once we update versions in Atlas we will be able to merge them.
+Currently, we maintain a separate version of CLB for CEM, 
+since versions of core libraries used by CEM are more recent than the ones currently used by Atlas. 
+Once we update versions in Atlas we will be able to merge them.
