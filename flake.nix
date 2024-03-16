@@ -27,9 +27,11 @@
     hercules-ci-effects.url = "github:hercules-ci/hercules-ci-effects";
   };
 
-  outputs = inputs@{ flake-parts, nixpkgs, haskell-nix, iohk-nix, CHaP, ... }:
+  outputs = inputs@{ flake-parts, nixpkgs, haskell-nix, iohk-nix, CHaP, hercules-ci-effects, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       imports = [
+        # Hercules CI effects module used to deploy to GitHub Pages
+        hercules-ci-effects.flakeModule
         ./nix/pre-commit.nix
       ];
       debug = true;
@@ -74,5 +76,9 @@
         {
           inherit (flake) checks devShells packages;
         };
+
+      # On CI, build only on available systems, to avoid errors about systems without agents.
+      # Please use aarch64-linux and x86_64-darwin sparingly as they run on smaller hardware.
+      herculesCI.ciSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" ];
     };
 }
