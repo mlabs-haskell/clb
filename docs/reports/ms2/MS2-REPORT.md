@@ -15,10 +15,10 @@ To demonstrate it works we took `bet-ref` example from the original Atlas'
 
 Outputs of the milestone can be found here:
 * CLB implementation in the `master` branch in [mlabs-haskell/clb](https://github.com/mlabs-haskell/clb) repository;
-* A fork of Atlas PAB that uses CLB instead of PSM along with the test suite in `clb-ms2` branch in [mlabs-haskell/atlas](https://github.com/mlabs-haskell/atlas) repository.
+* A fork of Atlas PAB that uses CLB instead of PSM along with the test suite in [`clb-ms2`](https://github.com/mlabs-haskell/atlas/pull/1) branch in `mlabs-haskell/atlas` repository.
 
 Additionally:
-* The version of `bet-ref-example` we used to get PSM traces is in the branch `bet-psm` in [mlabs-haskell/atlas](https://github.com/mlabs-haskell/atlas) repository.
+* The version of `bet-ref` example we used to get PSM traces is in the branch `[bet-psm`](https://github.com/mlabs-haskell/atlas/pull/2) in `mlabs-haskell/atlas` repository.
 
 ## Acceptance criteria and evidence
 
