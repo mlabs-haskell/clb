@@ -1,6 +1,6 @@
-{-# LANGUAGE TemplateHaskell #-}
+-- {-# LANGUAGE TemplateHaskell #-}
 
-module Clb.TimeSlot  (
+module Clb.TimeSlot (
   SlotConfig (..),
   SlotConversionError (..),
   slotRangeToPOSIXTimeRange,
@@ -44,8 +44,6 @@ import Prelude qualified as Haskell
 
 import Cardano.Slotting.Time (SlotLength, slotLengthFromMillisec)
 
-
-
 {- | Datatype to configure the length (ms) of one slot and the beginning of the
  first slot.
 -}
@@ -56,7 +54,8 @@ data SlotConfig = SlotConfig
   -- ^ Beginning of slot 0 (in milliseconds)
   }
   deriving stock (Eq, Show, Generic)
-  -- deriving anyclass ({-ToJSON, FromJSON, Serialise, -} NFData)
+
+-- deriving anyclass ({-ToJSON, FromJSON, Serialise, -} NFData)
 
 -- makeLift ''SlotConfig
 
@@ -185,5 +184,4 @@ posixTimeToNominalDiffTime =
 
 -- | Calculate the cardano-ledger `SlotLength`
 slotLength :: SlotConfig -> SlotLength
-slotLength SlotConfig{scSlotLength} = slotLengthFromMillisec scSlotLength
-
+slotLength SlotConfig {scSlotLength} = slotLengthFromMillisec scSlotLength

@@ -1,6 +1,5 @@
 -- | Config for emulator (from PSM)
 module Clb.MockConfig (
-  -- Stat (..),
   MockConfig (..),
   CheckLimits (..),
   defaultSlotConfig,
@@ -14,9 +13,12 @@ module Clb.MockConfig (
   forceLimits,
 ) where
 
-import Cardano.Ledger.BaseTypes qualified as L
-import Clb.Params
-    ( PParams, defaultBabbageParams, defaultAlonzoParams )
+import Cardano.Api qualified as C
+import Clb.Params (
+  PParams,
+  defaultAlonzoParams,
+  defaultBabbageParams,
+ )
 import Clb.TimeSlot
 
 -- | Config for the blockchain.
@@ -25,8 +27,8 @@ data MockConfig = MockConfig
   -- ^ limits check mode
   , mockConfigProtocol :: !PParams
   -- ^ Protocol parameters
-  , mockConfigNetworkId :: !L.Network
-  -- ^ Network id (mainnet / testnet)
+  , mockConfigNetworkId :: !C.NetworkId
+  -- ^ Network id
   , mockConfigSlotConfig :: !SlotConfig
   -- ^ Slot config
   }
@@ -66,7 +68,7 @@ defaultMockConfig params =
   MockConfig
     { mockConfigCheckLimits = ErrorLimits
     , mockConfigProtocol = params
-    , mockConfigNetworkId = L.Testnet
+    , mockConfigNetworkId = C.Testnet $ C.NetworkMagic 42
     , mockConfigSlotConfig = defaultSlotConfig
     }
 
