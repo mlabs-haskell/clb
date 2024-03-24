@@ -11,17 +11,13 @@ repository cardano-haskell-packages
 
 packages: .
 
-allow-newer:
-  , cardano-ledger-alonzo:plutus-ledger-api
-  , cardano-ledger-alonzo:plutus-core
-  , cardano-ledger-alonzo-test:plutus-ledger-api
-  , cardano-ledger-alonzo-test:plutus-ledger-api-testlib
-  , cardano-ledger-babbage:plutus-ledger-api
-  , cardano-ledger-conway:plutus-ledger-api
-  , cardano-ledger-binary:plutus-ledger-api
-  , cardano-api:plutus-ledger-api
-  , cardano-api:plutus-ledger-api-testlib
-  , cardano-api:prettyprinter-configurable
-
-allow-older:
-    cardano-ledger-pretty:*,
+-- This is needed since prettyprinting stuff was moved to
+-- cardano-ledger-test library which is no longer a subject
+-- to be published on CHaP.
+-- See discussion in https://github.com/IntersectMBO/cardano-ledger/pull/3973
+source-repository-package
+  type: git
+  location: https://github.com/IntersectMBO/cardano-ledger
+  tag: 6e2d37cc0f47bd02e89b4ce9f78b59c35c958e96
+  subdir:
+    libs/cardano-ledger-test
