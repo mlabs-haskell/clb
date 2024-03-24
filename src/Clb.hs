@@ -22,7 +22,6 @@ module Clb (
   -- FIXME: implement
   txOutRefAtPaymentCred,
   sendTx,
-  waitSlot,
   ValidationResult (..),
   OnChainTx (..),
 
@@ -50,8 +49,7 @@ module Clb (
   SlotConfig (..),
 
   -- * Protocol parameters
-  PParams (..),
-  babbageOnly,
+  PParams,
 
   -- * key utils
   intToKeyPair,
@@ -59,39 +57,37 @@ module Clb (
 where
 
 import Cardano.Api qualified as Api
-import Cardano.Api qualified as C
-import Cardano.Api.Byron qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Binary qualified as CBOR
 import Cardano.Crypto.DSIGN qualified as Crypto
 import Cardano.Crypto.Hash qualified as Crypto
 import Cardano.Crypto.Seed qualified as Crypto
 import Cardano.Ledger.Address qualified as L (compactAddr)
-import Cardano.Ledger.Alonzo.TxInfo (transDataHash', txInfoIn')
 import Cardano.Ledger.Api qualified as L
 import Cardano.Ledger.Babbage.TxOut qualified as L (BabbageTxOut (TxOutCompact), getEitherAddrBabbageTxOut)
+import Cardano.Ledger.BaseTypes (Globals)
 import Cardano.Ledger.BaseTypes qualified as L (Globals, Network (Testnet), mkVersion)
 import Cardano.Ledger.Compactible qualified as L
 import Cardano.Ledger.Core qualified as Core
 import Cardano.Ledger.Keys qualified as L
 import Cardano.Ledger.Mary (MaryValue)
-import Cardano.Ledger.Pretty (ppLedgerState)
-import Cardano.Ledger.Pretty.Babbage ()
+import Cardano.Ledger.Plutus.TxInfo (transDataHash, transTxIn)
 import Cardano.Ledger.SafeHash qualified as L
 import Cardano.Ledger.Shelley.API qualified as L (LedgerState (..), StakeReference (..), UTxOState (utxosUtxo), applyTx, ledgerSlotNo)
-import Cardano.Ledger.Slot (SlotNo)
+import Cardano.Ledger.Shelley.Genesis qualified as L
 import Cardano.Ledger.TxIn qualified as L (TxId (..), TxIn (..), mkTxInPartial)
 import Cardano.Ledger.UTxO qualified as L (UTxO (..))
-import Clb.ClbLedgerState (EmulatedLedgerState (..), currentBlock, initialState, ledgerEnv, memPoolState, nextSlot, setSlot, setUtxo)
+import Cardano.Slotting.EpochInfo (EpochInfo)
+import Clb.ClbLedgerState (EmulatedLedgerState (..), currentBlock, initialState, memPoolState, setUtxo)
 import Clb.Era (EmulatorEra)
 import Clb.MockConfig (MockConfig (..))
 import Clb.MockConfig qualified as X (defaultBabbage)
-import Clb.Params (PParams (AlonzoParams, BabbageParams), babbageOnly, mkGlobals)
-import Clb.TimeSlot (SlotConfig (..), slotLength)
+import Clb.Params (PParams, genesisDefaultsFromParams)
+import Clb.TimeSlot (SlotConfig (..), slotConfigToEpochInfo)
 import Clb.Tx (OnChainTx (..))
 import Control.Lens (over, (&), (.~), (^.))
 import Control.Monad.Identity (Identity (runIdentity))
-import Control.Monad.State (MonadState (get), State, gets, modify, modify', put, runState)
+import Control.Monad.State (MonadState (get), State, gets, modify', put, runState)
 import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
 import Data.Bifunctor (first)
 import Data.Char (isSpace)
@@ -110,6 +106,8 @@ import PlutusLedgerApi.V1.Scripts qualified as P (ScriptError)
 import PlutusLedgerApi.V2 qualified as PV2
 import Prettyprinter (Doc, Pretty, colon, fillSep, hang, indent, pretty, vcat, vsep, (<+>))
 import Test.Cardano.Ledger.Core.KeyPair qualified as TL
+import Test.Cardano.Ledger.Generic.PrettyCore (psLedgerState)
+import Test.Cardano.Ledger.Generic.Proof qualified as Proof
 
 --------------------------------------------------------------------------------
 -- Base emulator types
@@ -161,8 +159,7 @@ data ClbState = ClbState
   , mockFails :: !(Log FailReason)
   }
 
-data LogEntry
-  = LogEntry
+data LogEntry = LogEntry
   { leLevel :: !LogLevel
   , leMsg :: !String
   }
@@ -198,13 +195,12 @@ runClb (Clb act) = runState act
 
 -- | Init emulator state.
 initClb :: MockConfig -> Api.Value -> Api.Value -> ClbState
-initClb MockConfig {mockConfigProtocol = (AlonzoParams _)} _ _ = error "Unsupported params"
 initClb
-  cfg@MockConfig {mockConfigProtocol = params@(BabbageParams pparams)}
+  cfg@MockConfig {mockConfigProtocol = pparams}
   _initVal
   walletFunds =
     ClbState
-      { emulatedLedgerState = setUtxo pparams utxos (initialState params)
+      { emulatedLedgerState = setUtxo pparams utxos (initialState pparams)
       , mockDatums = M.empty
       , mockConfig = cfg
       , mockInfo = mempty
@@ -319,7 +315,7 @@ txOutRefAt addr = gets (txOutRefAtState $ C.toShelleyAddr addr)
 
 -- | Read all TxOutRefs that belong to given address.
 txOutRefAtState :: L.Addr L.StandardCrypto -> ClbState -> [P.TxOutRef]
-txOutRefAtState addr st = txInfoIn' <$> M.keys (M.filter atAddr utxos)
+txOutRefAtState addr st = transTxIn <$> M.keys (M.filter atAddr utxos)
   where
     utxos = L.unUTxO $ L.utxosUtxo $ L.lsUTxOState $ _memPoolState $ emulatedLedgerState st
 
@@ -337,14 +333,13 @@ txOutRefAtPaymentCred cred = gets (txOutRefAtPaymentCredState cred)
 txOutRefAtPaymentCredState :: P.Credential -> ClbState -> [P.TxOutRef]
 txOutRefAtPaymentCredState _cred _st = undefined -- FIXME:
 
-sendTx :: C.Tx C.BabbageEra -> Clb ValidationResult
-sendTx apiTx@(C.ShelleyTx _ tx) = do
-  -- FIXME: use patterns?
-  state@ClbState
-    { mockConfig = MockConfig {mockConfigProtocol, mockConfigSlotConfig}
-    , mockDatums = mockDatums
-    } <-
-    get
+getEpochInfo :: Clb (EpochInfo (Either Text))
+getEpochInfo =
+  slotConfigToEpochInfo <$> gets (mockConfigSlotConfig . mockConfig)
+
+getGlobals :: Clb Globals
+getGlobals = do
+  pparams <- gets (mockConfigProtocol . mockConfig)
   -- FIXME: fromJust
   let majorVer =
         fromJust $
@@ -353,21 +348,30 @@ sendTx apiTx@(C.ShelleyTx _ tx) = do
               L.mkVersion $
                 fst $
                   C.protocolParamProtocolVersion $
-                    C.fromLedgerPParams C.ShelleyBasedEraBabbage $
-                      babbageOnly mockConfigProtocol
-  let globals = mkGlobals (slotLength mockConfigSlotConfig) majorVer
+                    C.fromLedgerPParams C.ShelleyBasedEraBabbage pparams
+  epochInfo <- getEpochInfo
+  return $
+    L.mkShelleyGlobals
+      genesisDefaultsFromParams
+      epochInfo
+      majorVer
+
+sendTx :: C.Tx C.BabbageEra -> Clb ValidationResult
+sendTx apiTx@(C.ShelleyTx _ tx) = do
+  state@ClbState {mockDatums, emulatedLedgerState} <- get
+  globals <- getGlobals
+
   let ret =
         validateTx
           globals
-          (emulatedLedgerState state)
+          emulatedLedgerState
           tx
   case ret of
     Success newState _ -> do
       let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
       put $
         state
-          { -- TODO: introduce slot modes
-            emulatedLedgerState = nextSlot newState
+          { emulatedLedgerState = newState
           , mockDatums = M.union mockDatums txDatums
           }
     FailPhase1 {} -> pure ()
@@ -381,7 +385,6 @@ scriptDataFromCardanoTxBody ::
   C.TxBody era ->
   -- -> (Map P.DatumHash P.Datum, PV1.Redeemers)
   M.Map P.DatumHash P.Datum
-scriptDataFromCardanoTxBody C.ByronTxBody {} = mempty
 scriptDataFromCardanoTxBody (C.ShelleyTxBody _ _ _ C.TxBodyNoScriptData _ _) = mempty
 scriptDataFromCardanoTxBody
   (C.ShelleyTxBody _ _ _ (C.TxBodyScriptData _ (L.TxDats' dats) _) _ _) =
@@ -401,12 +404,12 @@ fromCardanoScriptData = PV1.dataToBuiltinData . C.toPlutusData
 
 datumHash :: PV2.Datum -> PV2.DatumHash
 datumHash (PV2.Datum (PV2.BuiltinData dat)) =
-  transDataHash' $ L.hashData $ L.Data @(L.AlonzoEra L.StandardCrypto) dat
+  transDataHash $ L.hashData $ L.Data @(L.AlonzoEra L.StandardCrypto) dat
 
 dumpUtxoState :: Clb ()
 dumpUtxoState = do
   s <- gets ((^. memPoolState) . emulatedLedgerState)
-  let dump = show $ ppLedgerState s
+  let dump = show $ psLedgerState Proof.Babbage s
   logInfo $ LogEntry Info dump
 
 --------------------------------------------------------------------------------
@@ -481,21 +484,3 @@ intToKeyPair n = TL.KeyPair vk sk
     mkSeedFromInteger stuff =
       Crypto.mkSeedFromBytes . Crypto.hashToBytes $
         Crypto.hashWithSerialiser @Crypto.Blake2b_256 CBOR.toCBOR stuff
-
-waitSlot :: SlotNo -> Clb ()
-waitSlot slot = do
-  currSlot <- gets (L.ledgerSlotNo . (^. ledgerEnv) . emulatedLedgerState)
-  -- TODO: shall we throw?
-  if currSlot < slot
-    then modify $ \s@ClbState {emulatedLedgerState = state} -> s {emulatedLedgerState = setSlot slot state}
-    else pure ()
-
--- TODO: implement
--- pure ()
--- now <- slotOfCurrentBlock
--- let d = slotToInteger slot - slotToInteger now
--- if | d < 0     -> fail $ printf "can't wait for slot %d, because current slot is %d" (slotToInteger slot) (slotToInteger now)
---    | d == 0    -> return ()
---    | otherwise -> liftRun $ waitNSlots $ Fork.Slot d
-
--- undefined
