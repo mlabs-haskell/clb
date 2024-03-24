@@ -12,9 +12,7 @@ import Cardano.Ledger.Coin qualified as L
 import Cardano.Ledger.Core qualified as L
 import Cardano.Ledger.Crypto qualified as L (StandardCrypto)
 import Cardano.Ledger.Plutus.Language qualified as Plutus
-import Cardano.Ledger.Shelley.Genesis qualified as L (ShelleyGenesis, mkShelleyGlobals)
-import Cardano.Slotting.EpochInfo qualified as S (fixedEpochInfo)
-import Cardano.Slotting.Time qualified as S (SlotLength)
+import Cardano.Ledger.Shelley.Genesis qualified as L (ShelleyGenesis)
 import Data.Coerce (coerce)
 import Data.Either (fromRight)
 import Data.Functor.Identity (Identity)
@@ -101,13 +99,6 @@ defaultBabbageParams =
             { Babbage.bppProtocolVersion =
                 L.ProtVer {pvMajor = L.eraProtVerHigh @(L.BabbageEra L.StandardCrypto), pvMinor = 0}
             }
-
--- | A sensible default 'Globals' value for the emulator
-mkGlobals :: S.SlotLength -> L.Version -> L.Globals
-mkGlobals sLength =
-  L.mkShelleyGlobals
-    genesisDefaultsFromParams
-    (S.fixedEpochInfo emulatorEpochSize sLength)
 
 genesisDefaultsFromParams :: L.ShelleyGenesis L.StandardCrypto
 genesisDefaultsFromParams = C.shelleyGenesisDefaults -- FIXME:

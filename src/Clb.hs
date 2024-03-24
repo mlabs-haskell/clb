@@ -65,6 +65,7 @@ import Cardano.Crypto.Seed qualified as Crypto
 import Cardano.Ledger.Address qualified as L (compactAddr)
 import Cardano.Ledger.Api qualified as L
 import Cardano.Ledger.Babbage.TxOut qualified as L (BabbageTxOut (TxOutCompact), getEitherAddrBabbageTxOut)
+import Cardano.Ledger.BaseTypes (Globals)
 import Cardano.Ledger.BaseTypes qualified as L (Globals, Network (Testnet), mkVersion)
 import Cardano.Ledger.Compactible qualified as L
 import Cardano.Ledger.Core qualified as Core
@@ -73,14 +74,16 @@ import Cardano.Ledger.Mary (MaryValue)
 import Cardano.Ledger.Plutus.TxInfo (transDataHash, transTxIn)
 import Cardano.Ledger.SafeHash qualified as L
 import Cardano.Ledger.Shelley.API qualified as L (LedgerState (..), StakeReference (..), UTxOState (utxosUtxo), applyTx, ledgerSlotNo)
+import Cardano.Ledger.Shelley.Genesis qualified as L
 import Cardano.Ledger.TxIn qualified as L (TxId (..), TxIn (..), mkTxInPartial)
 import Cardano.Ledger.UTxO qualified as L (UTxO (..))
+import Cardano.Slotting.EpochInfo (EpochInfo)
 import Clb.ClbLedgerState (EmulatedLedgerState (..), currentBlock, initialState, memPoolState, setUtxo)
 import Clb.Era (EmulatorEra)
 import Clb.MockConfig (MockConfig (..))
 import Clb.MockConfig qualified as X (defaultBabbage)
-import Clb.Params (PParams, mkGlobals)
-import Clb.TimeSlot (SlotConfig (..), slotLength)
+import Clb.Params (PParams, genesisDefaultsFromParams)
+import Clb.TimeSlot (SlotConfig (..), slotConfigToEpochInfo)
 import Clb.Tx (OnChainTx (..))
 import Control.Lens (over, (&), (.~), (^.))
 import Control.Monad.Identity (Identity (runIdentity))
@@ -331,14 +334,13 @@ txOutRefAtPaymentCred cred = gets (txOutRefAtPaymentCredState cred)
 txOutRefAtPaymentCredState :: P.Credential -> ClbState -> [P.TxOutRef]
 txOutRefAtPaymentCredState _cred _st = undefined -- FIXME:
 
-sendTx :: C.Tx C.BabbageEra -> Clb ValidationResult
-sendTx apiTx@(C.ShelleyTx _ tx) = do
-  -- FIXME: use patterns?
-  state@ClbState
-    { mockConfig = MockConfig {mockConfigProtocol, mockConfigSlotConfig}
-    , mockDatums = mockDatums
-    } <-
-    get
+getEpochInfo :: Clb (EpochInfo (Either Text))
+getEpochInfo =
+  slotConfigToEpochInfo <$> gets (mockConfigSlotConfig . mockConfig)
+
+getGlobals :: Clb Globals
+getGlobals = do
+  pparams <- gets (mockConfigProtocol . mockConfig)
   -- FIXME: fromJust
   let majorVer =
         fromJust $
@@ -347,13 +349,23 @@ sendTx apiTx@(C.ShelleyTx _ tx) = do
               L.mkVersion $
                 fst $
                   C.protocolParamProtocolVersion $
-                    C.fromLedgerPParams C.ShelleyBasedEraBabbage $
-                      mockConfigProtocol
-  let globals = mkGlobals (slotLength mockConfigSlotConfig) majorVer
+                    C.fromLedgerPParams C.ShelleyBasedEraBabbage pparams
+  epochInfo <- getEpochInfo
+  return $
+    L.mkShelleyGlobals
+      genesisDefaultsFromParams
+      epochInfo
+      majorVer
+
+sendTx :: C.Tx C.BabbageEra -> Clb ValidationResult
+sendTx apiTx@(C.ShelleyTx _ tx) = do
+  state@ClbState {mockDatums, emulatedLedgerState} <- get
+  globals <- getGlobals
+
   let ret =
         validateTx
           globals
-          (emulatedLedgerState state)
+          emulatedLedgerState
           tx
   case ret of
     Success newState _ -> do

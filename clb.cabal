@@ -54,7 +54,6 @@ library
   other-modules:
     Clb.Era
     Clb.Params
-    Clb.Slot
     Clb.Tx
 
   build-depends:
