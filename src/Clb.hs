@@ -49,8 +49,7 @@ module Clb (
   SlotConfig (..),
 
   -- * Protocol parameters
-  PParams (..),
-  babbageOnly,
+  PParams,
 
   -- * key utils
   intToKeyPair,
@@ -80,7 +79,7 @@ import Clb.ClbLedgerState (EmulatedLedgerState (..), currentBlock, initialState,
 import Clb.Era (EmulatorEra)
 import Clb.MockConfig (MockConfig (..))
 import Clb.MockConfig qualified as X (defaultBabbage)
-import Clb.Params (PParams (AlonzoParams, BabbageParams), babbageOnly, mkGlobals)
+import Clb.Params (PParams, mkGlobals)
 import Clb.TimeSlot (SlotConfig (..), slotLength)
 import Clb.Tx (OnChainTx (..))
 import Control.Lens (over, (&), (.~), (^.))
@@ -194,13 +193,12 @@ runClb (Clb act) = runState act
 
 -- | Init emulator state.
 initClb :: MockConfig -> Api.Value -> Api.Value -> ClbState
-initClb MockConfig {mockConfigProtocol = (AlonzoParams _)} _ _ = error "Unsupported params"
 initClb
-  cfg@MockConfig {mockConfigProtocol = params@(BabbageParams pparams)}
+  cfg@MockConfig {mockConfigProtocol = pparams}
   _initVal
   walletFunds =
     ClbState
-      { emulatedLedgerState = setUtxo pparams utxos (initialState params)
+      { emulatedLedgerState = setUtxo pparams utxos (initialState pparams)
       , mockDatums = M.empty
       , mockConfig = cfg
       , mockInfo = mempty
@@ -350,7 +348,7 @@ sendTx apiTx@(C.ShelleyTx _ tx) = do
                 fst $
                   C.protocolParamProtocolVersion $
                     C.fromLedgerPParams C.ShelleyBasedEraBabbage $
-                      babbageOnly mockConfigProtocol
+                      mockConfigProtocol
   let globals = mkGlobals (slotLength mockConfigSlotConfig) majorVer
   let ret =
         validateTx

@@ -57,7 +57,7 @@ setUtxo params utxo els@EmulatedLedgerState {_memPoolState} = els {_memPoolState
 
 -- | Initial ledger state for a distribution
 initialState :: PParams -> EmulatedLedgerState
-initialState (BabbageParams params) =
+initialState params =
   EmulatedLedgerState
     { _ledgerEnv =
         L.LedgerEnv
@@ -73,4 +73,3 @@ initialState (BabbageParams params) =
           }
     , _currentBlock = []
     }
-initialState _ = error "Unsupported PParams"

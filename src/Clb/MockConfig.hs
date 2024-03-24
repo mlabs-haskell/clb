@@ -5,9 +5,7 @@ module Clb.MockConfig (
   CheckLimits (..),
   defaultSlotConfig,
   defaultMockConfig,
-  defaultAlonzo,
   defaultBabbage,
-  defaultAlonzoParams,
   defaultBabbageParams,
   skipLimits,
   warnLimits,
@@ -17,7 +15,6 @@ module Clb.MockConfig (
 import Cardano.Api qualified as C
 import Clb.Params (
   PParams,
-  defaultAlonzoParams,
   defaultBabbageParams,
  )
 import Clb.TimeSlot
@@ -51,14 +48,9 @@ defaultSlotConfig =
     , scSlotZeroTime = 0 -- starts at unix epoch start
     }
 
-{- | Default Alonzo era config. If we use this parameter
- then Alonzo era TXs will be used for testing
--}
-defaultAlonzo :: MockConfig
-defaultAlonzo = defaultMockConfig defaultAlonzoParams
-
 {- | Default Babbage era config. If we use this parameter
  then Babbage era TXs will be used for testing
+ FIXME: remove rest of `Babbage` naming distinction (not applicable anymore)
 -}
 defaultBabbage :: MockConfig
 defaultBabbage = defaultMockConfig defaultBabbageParams

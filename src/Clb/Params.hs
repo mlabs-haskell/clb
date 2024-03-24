@@ -21,22 +21,10 @@ import Data.Functor.Identity (Identity)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromJust)
 
--- | Type that unifies protocol parameters across eras.
-data PParams
-  = -- | alonzo era protocol parameters
-    AlonzoParams (L.PParams (L.AlonzoEra L.StandardCrypto))
-  | -- | babbage era protocol parameters
-    BabbageParams (L.PParams (L.BabbageEra L.StandardCrypto))
-
-babbageOnly :: PParams -> L.PParams (L.BabbageEra L.StandardCrypto)
-babbageOnly (BabbageParams v) = v
-babbageOnly _ = error "Sorry, Babbage only"
+-- | Alonzo support is dropped, so this is just type synonym now
+type PParams = L.PParams (L.BabbageEra L.StandardCrypto)
 
 -- Alonzo
-
--- | Default Alonzo era parameters
-defaultAlonzoParams :: PParams
-defaultAlonzoParams = AlonzoParams defaultAlonzoParams'
 
 defaultAlonzoParams' :: L.PParams (L.AlonzoEra L.StandardCrypto)
 defaultAlonzoParams' =
@@ -108,8 +96,7 @@ defaultCostModels =
 defaultBabbageParams :: PParams
 defaultBabbageParams =
   let old = coerce defaultBabbageParams'
-   in BabbageParams $
-        coerce $
+   in coerce $
           old
             { Babbage.bppProtocolVersion =
                 L.ProtVer {pvMajor = L.eraProtVerHigh @(L.BabbageEra L.StandardCrypto), pvMinor = 0}
