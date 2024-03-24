@@ -7,23 +7,22 @@ license:         MIT
 maintainer:      ilia@mlabs.city
 author:          Ilia Rodionov, George Flerovsky
 synopsis:
-    The Cardano emulator that just works AKA Cardano Ledger Backend (CLB),
-    pronounced /klʌb/.
-tested-with:   GHC ==9.2.8
+  The Cardano emulator that just works AKA Cardano Ledger Backend (CLB),
+  pronounced /klʌb/.
+
+tested-with:     GHC ==9.2.8
 
 source-repository head
-    type:     git
-    location: https://github.com/mlabs-haskell/clb
+  type:     git
+  location: https://github.com/mlabs-haskell/clb
 
 flag force-recomp
   description: Compile with -fforce-recomp and -Wunused-packages
   default:     False
 
 common common-lang
-
   ghc-options:        -Wall -Wincomplete-uni-patterns
   ghc-options:        -fno-show-valid-hole-fits
-
   default-language:   GHC2021
   default-extensions:
     DataKinds
@@ -45,9 +44,8 @@ common common-lang
     ghc-options: -fforce-recomp -Wunused-packages
 
 library
-  import:           common-lang
-  exposed-modules:
-    Clb
+  import:          common-lang
+  exposed-modules: Clb
   other-modules:
     Clb.ClbLedgerState
     Clb.Era
@@ -58,17 +56,17 @@ library
     Clb.Tx
 
   build-depends:
-    , base                        ^>=4.16.4.0
-    , base16-bytestring           ^>=1.0.2.0
-    , bytestring                  ^>=0.11.4.0
-    , containers                  ^>=0.6.5.1
-    , data-default                ^>=0.7.1.1
-    , lens                        ^>=5.1.1
-    , mtl                         ^>=2.2.2
-    , prettyprinter               ^>=1.7.1
-    , text                        ^>=1.2.5.0
-    , time                        ^>=1.11.1.1
-    , transformers                ^>=0.5.6.2
+    , base               ^>=4.16.4.0
+    , base16-bytestring  ^>=1.0.2.0
+    , bytestring         ^>=0.11.4.0
+    , containers         ^>=0.6.5.1
+    , data-default       ^>=0.7.1.1
+    , lens               ^>=5.1.1
+    , mtl                ^>=2.2.2
+    , prettyprinter      ^>=1.7.1
+    , text               ^>=1.2.5.0
+    , time               ^>=1.11.1.1
+    , transformers       ^>=0.5.6.2
 
   build-depends:
     , cardano-api:{cardano-api, internal}                 ^>=8.2.0.0
@@ -77,6 +75,7 @@ library
     , cardano-ledger-alonzo                               ^>=1.2.1.0
     , cardano-ledger-api                                  ^>=1.2.0.0
     , cardano-ledger-babbage                              ^>=1.2.1.0
+    , cardano-ledger-binary                               ^>=1.1.1.0
     , cardano-ledger-core:{cardano-ledger-core, testlib}  ^>=1.2.0.0
     , cardano-ledger-mary                                 ^>=1.2.0.0
     , cardano-ledger-pretty                               ^>=1.1.1.0
@@ -86,9 +85,8 @@ library
     , plutus-core                                         ^>=1.6.0.0
     , plutus-ledger-api                                   ^>=1.6.0.0
     , plutus-tx                                           ^>=1.6.0.0
-    , cardano-ledger-binary                               ^>=1.1.1.0
 
-  hs-source-dirs:   src
+  hs-source-dirs:  src
 
 executable smoke-test
   import:           common-lang
@@ -96,11 +94,10 @@ executable smoke-test
   main-is:          smoke-test.hs
   build-depends:
     , base
+    , cardano-api:{cardano-api, internal}  ^>=8.2.0.0
     , clb
     , prettyprinter
-    , cardano-api:{cardano-api, internal}                 ^>=8.2.0.0
 
   hs-source-dirs:   test/smoke
   other-modules:
-
-  default-language:   GHC2021
+  default-language: GHC2021

@@ -161,8 +161,7 @@ data ClbState = ClbState
   , mockFails :: !(Log FailReason)
   }
 
-data LogEntry
-  = LogEntry
+data LogEntry = LogEntry
   { leLevel :: !LogLevel
   , leMsg :: !String
   }
@@ -486,9 +485,9 @@ waitSlot :: SlotNo -> Clb ()
 waitSlot slot = do
   currSlot <- gets (L.ledgerSlotNo . (^. ledgerEnv) . emulatedLedgerState)
   -- TODO: shall we throw?
-  if currSlot < slot
-    then modify $ \s@ClbState {emulatedLedgerState = state} -> s {emulatedLedgerState = setSlot slot state}
-    else pure ()
+  when (currSlot < slot) $
+    modify $
+      \s@ClbState {emulatedLedgerState = state} -> s {emulatedLedgerState = setSlot slot state}
 
 -- TODO: implement
 -- pure ()
