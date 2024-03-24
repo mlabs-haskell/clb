@@ -90,6 +90,7 @@ import Clb.Params (PParams (AlonzoParams, BabbageParams), babbageOnly, mkGlobals
 import Clb.TimeSlot (SlotConfig (..), slotLength)
 import Clb.Tx (OnChainTx (..))
 import Control.Lens (over, (&), (.~), (^.))
+import Control.Monad (when)
 import Control.Monad.Identity (Identity (runIdentity))
 import Control.Monad.State (MonadState (get), State, gets, modify, modify', put, runState)
 import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
