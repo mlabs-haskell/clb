@@ -95,10 +95,10 @@ defaultBabbageParams :: PParams
 defaultBabbageParams =
   let old = coerce defaultBabbageParams'
    in coerce $
-          old
-            { Babbage.bppProtocolVersion =
-                L.ProtVer {pvMajor = L.eraProtVerHigh @(L.BabbageEra L.StandardCrypto), pvMinor = 0}
-            }
+        old
+          { Babbage.bppProtocolVersion =
+              L.ProtVer {pvMajor = L.eraProtVerHigh @(L.BabbageEra L.StandardCrypto), pvMinor = 0}
+          }
 
 genesisDefaultsFromParams :: L.ShelleyGenesis L.StandardCrypto
 genesisDefaultsFromParams = C.shelleyGenesisDefaults -- FIXME:

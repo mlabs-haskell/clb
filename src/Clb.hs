@@ -159,8 +159,7 @@ data ClbState = ClbState
   , mockFails :: !(Log FailReason)
   }
 
-data LogEntry
-  = LogEntry
+data LogEntry = LogEntry
   { leLevel :: !LogLevel
   , leMsg :: !String
   }

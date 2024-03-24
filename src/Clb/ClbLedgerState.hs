@@ -20,8 +20,7 @@ TODO: shall we use 'OnChainTx' here?
 type EmulatorBlock = [OnChainTx]
 
 -- | State of the ledger with configuration, mempool, and the blockchain.
-data EmulatedLedgerState
-  = EmulatedLedgerState
+data EmulatedLedgerState = EmulatedLedgerState
   { _ledgerEnv :: !(L.MempoolEnv EmulatorEra)
   , _memPoolState :: !(L.MempoolState EmulatorEra)
   , _currentBlock :: !EmulatorBlock
