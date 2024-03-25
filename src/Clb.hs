@@ -335,7 +335,7 @@ txOutRefAtPaymentCredState _cred _st = undefined -- FIXME:
 
 getEpochInfo :: Clb (EpochInfo (Either Text))
 getEpochInfo =
-  slotConfigToEpochInfo <$> gets (mockConfigSlotConfig . mockConfig)
+  gets (slotConfigToEpochInfo . mockConfigSlotConfig . mockConfig)
 
 getGlobals :: Clb Globals
 getGlobals = do
