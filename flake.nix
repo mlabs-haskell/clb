@@ -79,6 +79,6 @@
 
       # On CI, build only on available systems, to avoid errors about systems without agents.
       # Please use aarch64-linux and x86_64-darwin sparingly as they run on smaller hardware.
-      herculesCI.ciSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" ];
+      herculesCI.ciSystems = [ "x86_64-linux" ];
     };
 }
