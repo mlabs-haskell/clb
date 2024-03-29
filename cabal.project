@@ -22,4 +22,3 @@ source-repository-package
   --sha256: sha256-jPn6ZQxr+L0c4/zv4KTKWhV77YPbxRo7yeV6aozIo3w=
   subdir:
     libs/cardano-ledger-test
-

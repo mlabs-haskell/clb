@@ -75,10 +75,11 @@ import Cardano.Ledger.Plutus.TxInfo (transDataHash, transTxIn)
 import Cardano.Ledger.SafeHash qualified as L
 import Cardano.Ledger.Shelley.API qualified as L (LedgerState (..), StakeReference (..), UTxOState (utxosUtxo), applyTx, ledgerSlotNo)
 import Cardano.Ledger.Shelley.Genesis qualified as L
+import Cardano.Ledger.Slot (SlotNo)
 import Cardano.Ledger.TxIn qualified as L (TxId (..), TxIn (..), mkTxInPartial)
 import Cardano.Ledger.UTxO qualified as L (UTxO (..))
 import Cardano.Slotting.EpochInfo (EpochInfo)
-import Clb.ClbLedgerState (EmulatedLedgerState (..), currentBlock, initialState, memPoolState, setUtxo)
+import Clb.ClbLedgerState (EmulatedLedgerState (..), currentBlock, initialState, memPoolState, setSlot, setUtxo)
 import Clb.Era (EmulatorEra)
 import Clb.MockConfig (MockConfig (..))
 import Clb.MockConfig qualified as X (defaultBabbage)
@@ -86,8 +87,9 @@ import Clb.Params (PParams, genesisDefaultsFromParams)
 import Clb.TimeSlot (SlotConfig (..), slotConfigToEpochInfo)
 import Clb.Tx (OnChainTx (..))
 import Control.Lens (over, (&), (.~), (^.))
+import Control.Monad (when)
 import Control.Monad.Identity (Identity (runIdentity))
-import Control.Monad.State (MonadState (get), State, gets, modify', put, runState)
+import Control.Monad.State (MonadState (get), State, gets, modify, modify', put, runState)
 import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
 import Data.Bifunctor (first)
 import Data.Char (isSpace)
@@ -484,3 +486,12 @@ intToKeyPair n = TL.KeyPair vk sk
     mkSeedFromInteger stuff =
       Crypto.mkSeedFromBytes . Crypto.hashToBytes $
         Crypto.hashWithSerialiser @Crypto.Blake2b_256 CBOR.toCBOR stuff
+
+waitSlot :: SlotNo -> Clb ()
+waitSlot slot = do
+  currSlot <- getCurrentSlot
+  -- TODO: shall we throw?
+  when (currSlot < slot) $
+    modify $
+      \s@ClbState {emulatedLedgerState = state} ->
+        s {emulatedLedgerState = setSlot slot state}

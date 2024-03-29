@@ -10,11 +10,11 @@ The undergoing development is funded by Catalyst Fund 10 [project]
 Milestone reports are available in [`docs/reports`]
 (https://github.com/mlabs-haskell/clb/tree/master/docs/reports).
 
-See `test/smoke/smoke-test.hs` for an usage example.
+See `test/smoke/smoke-test.hs` for a usage example.
 
 # Development
 
-Currently we use `input-output-hk/devx` shell with `cabal`:
+Currently, we use `input-output-hk/devx` shell with `cabal`:
 
 ```bash
 $ cd clb
