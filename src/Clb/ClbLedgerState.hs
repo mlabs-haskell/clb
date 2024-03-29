@@ -43,7 +43,7 @@ setSlot sl = over ledgerEnv (\l -> l {L.ledgerSlotNo = sl})
 setUtxo :: C.PParams EmulatorEra -> L.UTxO EmulatorEra -> EmulatedLedgerState -> EmulatedLedgerState
 setUtxo params utxo els@EmulatedLedgerState {_memPoolState} = els {_memPoolState = newPoolState}
   where
-    newPoolState = _memPoolState {L.lsUTxOState = L.smartUTxOState params utxo (L.Coin 0) (L.Coin 0) def}
+    newPoolState = _memPoolState {L.lsUTxOState = L.smartUTxOState params utxo (L.Coin 0) (L.Coin 0) def (L.Coin 0)}
 
 -- {- | Make a block with all transactions that have been validated in the
 -- current block, add the block to the blockchain, and empty the current block.
@@ -56,7 +56,7 @@ setUtxo params utxo els@EmulatedLedgerState {_memPoolState} = els {_memPoolState
 
 -- | Initial ledger state for a distribution
 initialState :: PParams -> EmulatedLedgerState
-initialState (BabbageParams params) =
+initialState params =
   EmulatedLedgerState
     { _ledgerEnv =
         L.LedgerEnv
@@ -67,9 +67,8 @@ initialState (BabbageParams params) =
           }
     , _memPoolState =
         L.LedgerState
-          { lsUTxOState = L.smartUTxOState params mempty (L.Coin 0) (L.Coin 0) def
+          { lsUTxOState = L.smartUTxOState params mempty (L.Coin 0) (L.Coin 0) def (L.Coin 0)
           , lsCertState = def
           }
     , _currentBlock = []
     }
-initialState _ = error "Unsupported PParams"
