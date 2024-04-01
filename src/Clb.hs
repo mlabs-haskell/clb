@@ -25,8 +25,10 @@ module Clb (
   ValidationResult (..),
   OnChainTx (..),
 
-  -- * Utils
+  -- * Querying
   getCurrentSlot,
+  getUtxosAtState,
+  getEpochInfo,
 
   -- * Working with logs
   LogEntry (LogEntry),
@@ -311,6 +313,13 @@ logFail res = do
 appendLog :: Slot -> a -> Log a -> Log a
 appendLog slot val (Log xs) = Log (xs Seq.|> (slot, val))
 
+getUtxosAtState :: ClbState -> L.UTxO EmulatorEra
+getUtxosAtState state =
+  L.utxosUtxo $
+    L.lsUTxOState $
+      _memPoolState $
+        emulatedLedgerState state
+
 -- | Read all TxOutRefs that belong to given address.
 txOutRefAt :: C.AddressInEra C.BabbageEra -> Clb [P.TxOutRef]
 txOutRefAt addr = gets (txOutRefAtState $ C.toShelleyAddr addr)
@@ -319,8 +328,7 @@ txOutRefAt addr = gets (txOutRefAtState $ C.toShelleyAddr addr)
 txOutRefAtState :: L.Addr L.StandardCrypto -> ClbState -> [P.TxOutRef]
 txOutRefAtState addr st = transTxIn <$> M.keys (M.filter atAddr utxos)
   where
-    utxos = L.unUTxO $ L.utxosUtxo $ L.lsUTxOState $ _memPoolState $ emulatedLedgerState st
-
+    utxos = L.unUTxO $ getUtxosAtState st
     atAddr :: L.BabbageTxOut EmulatorEra -> Bool
     atAddr out = case L.getEitherAddrBabbageTxOut out of
       Right cAddr -> L.compactAddr addr == cAddr
