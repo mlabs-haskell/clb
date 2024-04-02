@@ -7,7 +7,7 @@ import Cardano.Ledger.Shelley.API qualified as L
 import Cardano.Ledger.Shelley.LedgerState qualified as L
 import Cardano.Ledger.Slot (SlotNo)
 import Clb.Era (EmulatorEra)
-import Clb.Params (PParams (..))
+import Clb.Params (PParams)
 import Clb.Tx (OnChainTx)
 import Control.Lens (makeLenses, over)
 import Data.Default (def)

@@ -25,8 +25,10 @@ module Clb (
   ValidationResult (..),
   OnChainTx (..),
 
-  -- * Utils
+  -- * Querying
   getCurrentSlot,
+  getUtxosAtState,
+  getEpochInfo,
 
   -- * Working with logs
   LogEntry (LogEntry),
@@ -66,18 +68,15 @@ import Cardano.Ledger.Address qualified as L (compactAddr)
 import Cardano.Ledger.Api qualified as L
 import Cardano.Ledger.Babbage.TxOut qualified as L (BabbageTxOut (TxOutCompact), getEitherAddrBabbageTxOut)
 import Cardano.Ledger.BaseTypes (Globals)
-import Cardano.Ledger.BaseTypes qualified as L (Globals, Network (Testnet), mkVersion)
+import Cardano.Ledger.BaseTypes qualified as L
 import Cardano.Ledger.Compactible qualified as L
 import Cardano.Ledger.Core qualified as Core
 import Cardano.Ledger.Keys qualified as L
-import Cardano.Ledger.Mary (MaryValue)
 import Cardano.Ledger.Plutus.TxInfo (transDataHash, transTxIn)
 import Cardano.Ledger.SafeHash qualified as L
-import Cardano.Ledger.Shelley.API qualified as L (LedgerState (..), StakeReference (..), UTxOState (utxosUtxo), applyTx, ledgerSlotNo)
-import Cardano.Ledger.Shelley.Genesis qualified as L
+import Cardano.Ledger.Shelley.API qualified as L hiding (TxOutCompact)
 import Cardano.Ledger.Slot (SlotNo)
-import Cardano.Ledger.TxIn qualified as L (TxId (..), TxIn (..), mkTxInPartial)
-import Cardano.Ledger.UTxO qualified as L (UTxO (..))
+import Cardano.Ledger.TxIn qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo)
 import Clb.ClbLedgerState (EmulatedLedgerState (..), currentBlock, initialState, memPoolState, setSlot, setUtxo)
 import Clb.Era (EmulatorEra)
@@ -91,7 +90,6 @@ import Control.Monad (when)
 import Control.Monad.Identity (Identity (runIdentity))
 import Control.Monad.State (MonadState (get), State, gets, modify, modify', put, runState)
 import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
-import Data.Bifunctor (first)
 import Data.Char (isSpace)
 import Data.Foldable (toList)
 import Data.Function (on)
@@ -101,10 +99,8 @@ import Data.Maybe (fromJust)
 import Data.Sequence (Seq (..))
 import Data.Sequence qualified as Seq
 import Data.Text (Text)
-import Data.Text qualified as Text
 import PlutusLedgerApi.V1 qualified as P (Credential, Datum, DatumHash, TxOutRef)
 import PlutusLedgerApi.V1 qualified as PV1
-import PlutusLedgerApi.V1.Scripts qualified as P (ScriptError)
 import PlutusLedgerApi.V2 qualified as PV2
 import Prettyprinter (Doc, Pretty, colon, fillSep, hang, indent, pretty, vcat, vsep, (<+>))
 import Test.Cardano.Ledger.Core.KeyPair qualified as TL
@@ -115,31 +111,15 @@ import Test.Cardano.Ledger.Generic.Proof qualified as Proof
 -- Base emulator types
 --------------------------------------------------------------------------------
 
--- | Cardano tx from any era.
-data CardanoTx where
-  CardanoTx :: (C.IsCardanoEra era) => C.Tx era -> CardanoTx
-
--- | A reason why a transaction is invalid.
-data ValidationError
-  = -- | The transaction output consumed by a transaction input could not be found
-    -- (either because it was already spent, or because
-    -- there was no transaction with the given hash on the blockchain).
-    TxOutRefNotFound -- TxIn
-  | -- | For pay-to-script outputs: evaluation of the validator script failed.
-    ScriptFailure P.ScriptError
-  | -- | An error from Cardano.Ledger validation
-    CardanoLedgerValidationError Text
-  | -- | Balancing failed, it needed more than the maximum number of collateral inputs
-    MaxCollateralInputsExceeded
-  deriving (Eq, Show)
+-- FIXME: legacy types converted into type synonyms
+type CardanoTx = Core.Tx EmulatorEra
+type ValidationError = L.ApplyTxError EmulatorEra
 
 data ValidationResult
-  = -- | A transaction failed to validate in phase 1.
-    FailPhase1 !CardanoTx !ValidationError
-  | -- | A transaction failed to validate in phase 2. The @Value@ indicates the amount of collateral stored in the transaction.
-    FailPhase2 !OnChainTx !ValidationError !(MaryValue L.StandardCrypto)
-  | Success !EmulatedLedgerState !OnChainTx -- !RedeemerReport
-  -- deriving stock (Eq, Show, Generic)
+  = -- | A transaction failed to be validated by Ledger
+    Fail !CardanoTx !ValidationError
+  | Success !EmulatedLedgerState !OnChainTx
+  deriving stock (Show)
 
 --------------------------------------------------------------------------------
 -- CLB base monad (instead of PSM's Run)
@@ -311,6 +291,13 @@ logFail res = do
 appendLog :: Slot -> a -> Log a -> Log a
 appendLog slot val (Log xs) = Log (xs Seq.|> (slot, val))
 
+getUtxosAtState :: ClbState -> L.UTxO EmulatorEra
+getUtxosAtState state =
+  L.utxosUtxo $
+    L.lsUTxOState $
+      _memPoolState $
+        emulatedLedgerState state
+
 -- | Read all TxOutRefs that belong to given address.
 txOutRefAt :: C.AddressInEra C.BabbageEra -> Clb [P.TxOutRef]
 txOutRefAt addr = gets (txOutRefAtState $ C.toShelleyAddr addr)
@@ -319,8 +306,7 @@ txOutRefAt addr = gets (txOutRefAtState $ C.toShelleyAddr addr)
 txOutRefAtState :: L.Addr L.StandardCrypto -> ClbState -> [P.TxOutRef]
 txOutRefAtState addr st = transTxIn <$> M.keys (M.filter atAddr utxos)
   where
-    utxos = L.unUTxO $ L.utxosUtxo $ L.lsUTxOState $ _memPoolState $ emulatedLedgerState st
-
+    utxos = L.unUTxO $ getUtxosAtState st
     atAddr :: L.BabbageTxOut EmulatorEra -> Bool
     atAddr out = case L.getEitherAddrBabbageTxOut out of
       Right cAddr -> L.compactAddr addr == cAddr
@@ -376,8 +362,7 @@ sendTx apiTx@(C.ShelleyTx _ tx) = do
           { emulatedLedgerState = newState
           , mockDatums = M.union mockDatums txDatums
           }
-    FailPhase1 {} -> pure ()
-    FailPhase2 {} -> pure ()
+    Fail {} -> pure ()
   pure ret
 
 {- | Given a 'C.TxBody from a 'C.Tx era', return the datums and redeemers along
@@ -442,9 +427,8 @@ validateTx globals state tx =
   case res of
     -- FIXME: why Phase1, not sure here?
     Left err ->
-      FailPhase1
-        -- (CardanoTx (C.ShelleyTx C.ShelleyBasedEraBabbage tx) C.BabbageEraInCardanoMode)
-        (CardanoTx (C.ShelleyTx C.ShelleyBasedEraBabbage tx))
+      Fail
+        tx
         err
     Right (newState, vtx) ->
       Success newState vtx
@@ -461,9 +445,7 @@ applyTx ::
   Either ValidationError (EmulatedLedgerState, OnChainTx)
 applyTx globals oldState@EmulatedLedgerState {_ledgerEnv, _memPoolState} tx = do
   (newMempool, OnChainTx -> vtx) <-
-    first
-      (CardanoLedgerValidationError . Text.pack . show)
-      (L.applyTx globals _ledgerEnv _memPoolState tx)
+    L.applyTx globals _ledgerEnv _memPoolState tx
   pure (oldState & memPoolState .~ newMempool & over currentBlock (vtx :), vtx)
 
 --------------------------------------------------------------------------------
