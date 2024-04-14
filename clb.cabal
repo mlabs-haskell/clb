@@ -86,6 +86,7 @@ library
     , plutus-core
     , plutus-ledger-api
     , plutus-tx
+    , small-steps
 
   hs-source-dirs:  src
 
