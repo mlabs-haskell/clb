@@ -75,6 +75,7 @@ import Cardano.Ledger.Keys qualified as L
 import Cardano.Ledger.Plutus.TxInfo (transDataHash, transTxIn)
 import Cardano.Ledger.SafeHash qualified as L
 import Cardano.Ledger.Shelley.API qualified as L hiding (TxOutCompact)
+import Cardano.Ledger.Shelley.Core (EraRule)
 import Cardano.Ledger.Slot (SlotNo)
 import Cardano.Ledger.TxIn qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo)
@@ -85,11 +86,20 @@ import Clb.MockConfig qualified as X (defaultBabbage)
 import Clb.Params (PParams, genesisDefaultsFromParams)
 import Clb.TimeSlot (SlotConfig (..), slotConfigToEpochInfo)
 import Clb.Tx (OnChainTx (..))
+import Control.Arrow (ArrowChoice (..))
 import Control.Lens (over, (&), (.~), (^.))
 import Control.Monad (when)
 import Control.Monad.Identity (Identity (runIdentity))
+import Control.Monad.Reader (runReader)
 import Control.Monad.State (MonadState (get), State, gets, modify, modify', put, runState)
 import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
+import Control.State.Transition (SingEP (..), globalAssertionPolicy)
+import Control.State.Transition.Extended (
+  ApplySTSOpts (..),
+  TRC (..),
+  ValidationPolicy (..),
+  applySTSOptsEither,
+ )
 import Data.Char (isSpace)
 import Data.Foldable (toList)
 import Data.Function (on)
@@ -344,26 +354,25 @@ getGlobals = do
       epochInfo
       majorVer
 
+-- | Run `applyTx`, if succeed update state and record datums
 sendTx :: C.Tx C.BabbageEra -> Clb ValidationResult
 sendTx apiTx@(C.ShelleyTx _ tx) = do
-  state@ClbState {mockDatums, emulatedLedgerState} <- get
+  state@ClbState {emulatedLedgerState} <- get
   globals <- getGlobals
-
-  let ret =
-        validateTx
-          globals
-          emulatedLedgerState
-          tx
-  case ret of
-    Success newState _ -> do
+  case applyTx ValidateAll globals emulatedLedgerState tx of
+    Right (newState, vtx) -> do
+      put $ state {emulatedLedgerState = newState}
+      recordNewDatums
+      return $ Success newState vtx
+    Left err -> return $ Fail tx err
+  where
+    recordNewDatums = do
+      state@ClbState {mockDatums} <- get
       let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
       put $
         state
-          { emulatedLedgerState = newState
-          , mockDatums = M.union mockDatums txDatums
+          { mockDatums = M.union mockDatums txDatums
           }
-    Fail {} -> pure ()
-  pure ret
 
 {- | Given a 'C.TxBody from a 'C.Tx era', return the datums and redeemers along
 with their hashes.
@@ -422,31 +431,30 @@ getFails = gets mockFails
 -- Transactions validation TODO: factor out
 --------------------------------------------------------------------------------
 
-validateTx :: L.Globals -> EmulatedLedgerState -> Core.Tx EmulatorEra -> ValidationResult
-validateTx globals state tx =
-  case res of
-    -- FIXME: why Phase1, not sure here?
-    Left err ->
-      Fail
-        tx
-        err
-    Right (newState, vtx) ->
-      Success newState vtx
-  where
-    res = applyTx globals state tx
-
-{- | A wrapper around the ledger's applyTx
-TODO: step slot somewhere, since this is not ledger's responsibility!
--}
+-- | Code copy-pasted from ledger's `applyTx` to use custom `ApplySTSOpts`
 applyTx ::
+  forall stsUsed.
+  (stsUsed ~ EraRule "LEDGER" EmulatorEra) =>
+  ValidationPolicy ->
   L.Globals ->
   EmulatedLedgerState ->
   Core.Tx EmulatorEra ->
-  Either ValidationError (EmulatedLedgerState, OnChainTx)
-applyTx globals oldState@EmulatedLedgerState {_ledgerEnv, _memPoolState} tx = do
-  (newMempool, OnChainTx -> vtx) <-
-    L.applyTx globals _ledgerEnv _memPoolState tx
+  Either (L.ApplyTxError EmulatorEra) (EmulatedLedgerState, OnChainTx)
+applyTx asoValidation globals oldState@EmulatedLedgerState {_ledgerEnv, _memPoolState} tx = do
+  newMempool <-
+    left L.ApplyTxError
+      $ flip runReader globals
+        . applySTSOptsEither @stsUsed opts
+      $ TRC (_ledgerEnv, _memPoolState, tx)
+  let vtx = OnChainTx $ L.unsafeMakeValidated tx
   pure (oldState & memPoolState .~ newMempool & over currentBlock (vtx :), vtx)
+  where
+    opts =
+      ApplySTSOpts
+        { asoAssertions = globalAssertionPolicy
+        , asoValidation
+        , asoEvents = EPDiscard
+        }
 
 --------------------------------------------------------------------------------
 -- Key utils
