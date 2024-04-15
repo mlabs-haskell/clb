@@ -56,6 +56,7 @@ module Clb (
 
   -- * key utils
   intToKeyPair,
+  intToCardanoSk,
 )
 where
 
@@ -487,6 +488,9 @@ intToKeyPair n = TL.KeyPair vk sk
     mkSeedFromInteger stuff =
       Crypto.mkSeedFromBytes . Crypto.hashToBytes $
         Crypto.hashWithSerialiser @Crypto.Blake2b_256 CBOR.toCBOR stuff
+
+intToCardanoSk n = case intToKeyPair @(Core.EraCrypto EmulatorEra) n of
+  TL.KeyPair _ sk -> C.PaymentSigningKey sk
 
 waitSlot :: SlotNo -> Clb ()
 waitSlot slot = do
