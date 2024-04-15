@@ -7,6 +7,7 @@ module Clb (
 
   -- * CLB Monad
   Clb,
+  ClbT (unwrapClbT),
 
   -- * CLB internals (revise)
   ClbState (..),
@@ -91,7 +92,8 @@ import Control.Lens (over, (&), (.~), (^.))
 import Control.Monad (when)
 import Control.Monad.Identity (Identity (runIdentity))
 import Control.Monad.Reader (runReader)
-import Control.Monad.State (MonadState (get), State, gets, modify, modify', put, runState)
+import Control.Monad.State (MonadState (get), State, StateT, gets, modify, modify', put, runState)
+import Control.Monad.Trans (MonadIO)
 import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
 import Control.State.Transition (SingEP (..), globalAssertionPolicy)
 import Control.State.Transition.Extended (
@@ -135,9 +137,18 @@ data ValidationResult
 -- CLB base monad (instead of PSM's Run)
 --------------------------------------------------------------------------------
 
+newtype ClbT m a = ClbT {unwrapClbT :: StateT ClbState m a}
+  deriving newtype
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadIO
+    , MonadFail
+    , MonadState ClbState
+    )
+
 -- | State monad wrapper to run emulator.
-newtype Clb a = Clb (State ClbState a)
-  deriving newtype (Functor, Applicative, Monad, MonadState ClbState)
+type Clb a = ClbT Identity a
 
 {- | Emulator state: ledger state + some additional things
 FIXME: remove non-state parts like MockConfig and Log (?)
@@ -183,7 +194,7 @@ newtype FailReason
 
 -- | Run CLB emulator.
 runClb :: Clb a -> ClbState -> (a, ClbState)
-runClb (Clb act) = runState act
+runClb (ClbT act) = runState act
 
 -- | Init emulator state.
 initClb :: MockConfig -> Api.Value -> Api.Value -> ClbState
@@ -274,24 +285,24 @@ instance Pretty Slot where
 -- Actions in Clb monad
 --------------------------------------------------------------------------------
 
-getCurrentSlot :: Clb C.SlotNo
+getCurrentSlot :: (Monad m) => ClbT m C.SlotNo
 getCurrentSlot = gets (L.ledgerSlotNo . _ledgerEnv . emulatedLedgerState)
 
 -- | Log a generic (non-typed) error.
-logError :: String -> Clb ()
+logError :: (Monad m) => String -> ClbT m ()
 logError msg = do
   logInfo $ LogEntry Error msg
   logFail $ GenericFail msg
 
 -- | Add a non-error log enty.
-logInfo :: LogEntry -> Clb ()
+logInfo :: (Monad m) => LogEntry -> ClbT m ()
 logInfo le = do
   C.SlotNo slotNo <- getCurrentSlot
   let slot = Slot $ toInteger slotNo
   modify' $ \s -> s {mockInfo = appendLog slot le (mockInfo s)}
 
 -- | Log failure.
-logFail :: FailReason -> Clb ()
+logFail :: (Monad m) => FailReason -> ClbT m ()
 logFail res = do
   C.SlotNo slotNo <- getCurrentSlot
   let slot = Slot $ toInteger slotNo
@@ -309,7 +320,7 @@ getUtxosAtState state =
         emulatedLedgerState state
 
 -- | Read all TxOutRefs that belong to given address.
-txOutRefAt :: C.AddressInEra C.BabbageEra -> Clb [P.TxOutRef]
+txOutRefAt :: (Monad m) => C.AddressInEra C.BabbageEra -> ClbT m [P.TxOutRef]
 txOutRefAt addr = gets (txOutRefAtState $ C.toShelleyAddr addr)
 
 -- | Read all TxOutRefs that belong to given address.
@@ -331,11 +342,11 @@ txOutRefAtPaymentCred cred = gets (txOutRefAtPaymentCredState cred)
 txOutRefAtPaymentCredState :: P.Credential -> ClbState -> [P.TxOutRef]
 txOutRefAtPaymentCredState _cred _st = undefined -- FIXME:
 
-getEpochInfo :: Clb (EpochInfo (Either Text))
+getEpochInfo :: (Monad m) => ClbT m (EpochInfo (Either Text))
 getEpochInfo =
   gets (slotConfigToEpochInfo . mockConfigSlotConfig . mockConfig)
 
-getGlobals :: Clb Globals
+getGlobals :: (Monad m) => ClbT m Globals
 getGlobals = do
   pparams <- gets (mockConfigProtocol . mockConfig)
   -- FIXME: fromJust
@@ -355,7 +366,7 @@ getGlobals = do
       majorVer
 
 -- | Run `applyTx`, if succeed update state and record datums
-sendTx :: C.Tx C.BabbageEra -> Clb ValidationResult
+sendTx :: (Monad m) => C.Tx C.BabbageEra -> ClbT m ValidationResult
 sendTx apiTx@(C.ShelleyTx _ tx) = do
   state@ClbState {emulatedLedgerState} <- get
   globals <- getGlobals
