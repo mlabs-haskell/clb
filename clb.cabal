@@ -80,12 +80,12 @@ library
     , cardano-ledger-core:{cardano-ledger-core, testlib}
     , cardano-ledger-mary
     , cardano-ledger-shelley
-    , pretty-show
     , cardano-slotting
     , ouroboros-consensus-cardano
     , plutus-core
     , plutus-ledger-api
     , plutus-tx
+    , pretty-show
     , small-steps
 
   hs-source-dirs:  src

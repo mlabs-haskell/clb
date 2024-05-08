@@ -104,7 +104,6 @@ import Control.State.Transition.Extended (
   ValidationPolicy (..),
   applySTSOptsEither,
  )
-import Text.Show.Pretty (ppShow)
 import Data.Char (isSpace)
 import Data.Foldable (toList)
 import Data.Function (on)
@@ -119,6 +118,7 @@ import PlutusLedgerApi.V1 qualified as PV1
 import PlutusLedgerApi.V2 qualified as PV2
 import Prettyprinter (Doc, Pretty, colon, fillSep, hang, indent, pretty, vcat, vsep, (<+>))
 import Test.Cardano.Ledger.Core.KeyPair qualified as TL
+import Text.Show.Pretty (ppShow)
 
 --------------------------------------------------------------------------------
 -- Base emulator types
