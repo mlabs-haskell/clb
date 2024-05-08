@@ -80,7 +80,7 @@ library
     , cardano-ledger-core:{cardano-ledger-core, testlib}
     , cardano-ledger-mary
     , cardano-ledger-shelley
-    , cardano-ledger-test
+    , pretty-show
     , cardano-slotting
     , ouroboros-consensus-cardano
     , plutus-core
