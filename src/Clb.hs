@@ -32,7 +32,7 @@ module Clb (
   getEpochInfo,
 
   -- * Working with logs
-  LogEntry (LogEntry),
+  LogEntry (..),
   LogLevel (..),
   Log (Log),
   unLog,
@@ -57,6 +57,7 @@ module Clb (
   -- * key utils
   intToKeyPair,
   intToCardanoSk,
+  waitSlot,
 )
 where
 
@@ -93,7 +94,7 @@ import Control.Lens (over, (&), (.~), (^.))
 import Control.Monad (when)
 import Control.Monad.Identity (Identity (runIdentity))
 import Control.Monad.Reader (runReader)
-import Control.Monad.State (MonadState (get), State, StateT, gets, modify, modify', put, runState)
+import Control.Monad.State (MonadState (get), StateT, gets, modify, modify', put, runState)
 import Control.Monad.Trans (MonadIO)
 import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
 import Control.State.Transition (SingEP (..), globalAssertionPolicy)
@@ -487,6 +488,7 @@ intToKeyPair n = TL.KeyPair vk sk
       Crypto.mkSeedFromBytes . Crypto.hashToBytes $
         Crypto.hashWithSerialiser @Crypto.Blake2b_256 CBOR.toCBOR stuff
 
+intToCardanoSk :: Integer -> C.SigningKey C.PaymentKey
 intToCardanoSk n = case intToKeyPair @(Core.EraCrypto EmulatorEra) n of
   TL.KeyPair _ sk -> C.PaymentSigningKey sk
 
