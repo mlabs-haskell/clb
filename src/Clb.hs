@@ -32,7 +32,7 @@ module Clb (
   getEpochInfo,
 
   -- * Working with logs
-  LogEntry (LogEntry),
+  LogEntry (..),
   LogLevel (..),
   Log (Log),
   unLog,
@@ -57,6 +57,7 @@ module Clb (
   -- * key utils
   intToKeyPair,
   intToCardanoSk,
+  waitSlot,
 )
 where
 
@@ -93,7 +94,7 @@ import Control.Lens (over, (&), (.~), (^.))
 import Control.Monad (when)
 import Control.Monad.Identity (Identity (runIdentity))
 import Control.Monad.Reader (runReader)
-import Control.Monad.State (MonadState (get), State, StateT, gets, modify, modify', put, runState)
+import Control.Monad.State (MonadState (get), StateT, gets, modify, modify', put, runState)
 import Control.Monad.Trans (MonadIO)
 import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
 import Control.State.Transition (SingEP (..), globalAssertionPolicy)
@@ -103,6 +104,7 @@ import Control.State.Transition.Extended (
   ValidationPolicy (..),
   applySTSOptsEither,
  )
+import Text.Show.Pretty (ppShow)
 import Data.Char (isSpace)
 import Data.Foldable (toList)
 import Data.Function (on)
@@ -117,8 +119,6 @@ import PlutusLedgerApi.V1 qualified as PV1
 import PlutusLedgerApi.V2 qualified as PV2
 import Prettyprinter (Doc, Pretty, colon, fillSep, hang, indent, pretty, vcat, vsep, (<+>))
 import Test.Cardano.Ledger.Core.KeyPair qualified as TL
-import Test.Cardano.Ledger.Generic.PrettyCore (psLedgerState)
-import Test.Cardano.Ledger.Generic.Proof qualified as Proof
 
 --------------------------------------------------------------------------------
 -- Base emulator types
@@ -417,8 +417,7 @@ datumHash (PV2.Datum (PV2.BuiltinData dat)) =
 dumpUtxoState :: Clb ()
 dumpUtxoState = do
   s <- gets ((^. memPoolState) . emulatedLedgerState)
-  let dump = show $ psLedgerState Proof.Babbage s
-  logInfo $ LogEntry Info dump
+  logInfo $ LogEntry Info $ ppShow s
 
 --------------------------------------------------------------------------------
 -- Helpers for working with emulator traces
@@ -489,6 +488,7 @@ intToKeyPair n = TL.KeyPair vk sk
       Crypto.mkSeedFromBytes . Crypto.hashToBytes $
         Crypto.hashWithSerialiser @Crypto.Blake2b_256 CBOR.toCBOR stuff
 
+intToCardanoSk :: Integer -> C.SigningKey C.PaymentKey
 intToCardanoSk n = case intToKeyPair @(Core.EraCrypto EmulatorEra) n of
   TL.KeyPair _ sk -> C.PaymentSigningKey sk
 
