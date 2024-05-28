@@ -211,7 +211,7 @@ initClb
       , mockFails = mempty
       }
     where
-      utxos = L.UTxO $ M.fromList $ mkGenesis walletFunds <$> [1 .. 9]
+      utxos = L.UTxO $ M.fromList $ mkGenesis walletFunds <$> [1 .. 10]
 
       -- genesis :: (L.TxIn (Core.EraCrypto EmulatorEra), Core.TxOut EmulatorEra)
       -- genesis =
