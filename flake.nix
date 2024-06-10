@@ -51,7 +51,7 @@
             };
           project = pkgs.haskell-nix.cabalProject' {
             src = ./.;
-            compiler-nix-name = "ghc963";
+            compiler-nix-name = "ghc965";
             inputMap = {
               "https://input-output-hk.github.io/cardano-haskell-packages" = CHaP;
             };
@@ -63,7 +63,7 @@
               shellHook = config.pre-commit.installationScript;
               tools = {
                 cabal = { };
-                haskell-language-server = { };
+                haskell-language-server = { version = "2.8.0.0"; };
                 hlint = { version = "3.6.1"; };
                 cabal-fmt = { };
                 fourmolu = { version = "0.14.0.0"; };
