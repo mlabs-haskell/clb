@@ -82,12 +82,17 @@ library
     , cardano-ledger-shelley
     , cardano-slotting
     , cardano-testnet
+    , hedgehog
+    , hedgehog-extras
     , ouroboros-consensus-cardano
+    , ouroboros-network-protocols
     , plutus-core
     , plutus-ledger-api
     , plutus-tx
     , pretty-show
+    , resourcet
     , small-steps
+    , stm
 
   hs-source-dirs:  src
 
