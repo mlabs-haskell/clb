@@ -6,11 +6,10 @@ module Clb (
   X.defaultBabbage,
 
   -- * CLB Monad
-  Clb,
-  ClbT (unwrapClbT),
+  Clb (unwrapClb),
 
   -- * CLB internals (revise)
-  ClbState (..),
+  ClbRuntime (..),
   EmulatedLedgerState (..),
 
   -- * CLB Runner
@@ -19,7 +18,6 @@ module Clb (
 
   -- * Actions
   txOutRefAt,
-  txOutRefAtState,
   -- FIXME: implement
   txOutRefAtPaymentCred,
   sendTx,
@@ -28,7 +26,6 @@ module Clb (
 
   -- * Querying
   getCurrentSlot,
-  getUtxosAtState,
   getEpochInfo,
 
   -- * Working with logs
@@ -37,14 +34,9 @@ module Clb (
   Log (Log),
   unLog,
   fromLog,
-  logInfo,
-  logFail,
   logError,
-  dumpUtxoState,
 
   -- * Log utils
-  checkErrors,
-  getFails,
   ppLog,
 
   -- * Emulator configuration
@@ -67,43 +59,28 @@ import Cardano.Binary qualified as CBOR
 import Cardano.Crypto.DSIGN qualified as Crypto
 import Cardano.Crypto.Hash qualified as Crypto
 import Cardano.Crypto.Seed qualified as Crypto
-import Cardano.Ledger.Address qualified as L (compactAddr)
 import Cardano.Ledger.Api qualified as L
-import Cardano.Ledger.Babbage.TxOut qualified as L (BabbageTxOut (TxOutCompact), getEitherAddrBabbageTxOut)
 import Cardano.Ledger.BaseTypes (Globals)
 import Cardano.Ledger.BaseTypes qualified as L
-import Cardano.Ledger.Compactible qualified as L
 import Cardano.Ledger.Core qualified as Core
 import Cardano.Ledger.Keys qualified as L
 import Cardano.Ledger.Plutus.TxInfo (transDataHash, transTxIn)
-import Cardano.Ledger.SafeHash qualified as L
 import Cardano.Ledger.Shelley.API qualified as L hiding (TxOutCompact)
-import Cardano.Ledger.Shelley.Core (EraRule)
-import Cardano.Ledger.Slot (SlotNo)
-import Cardano.Ledger.TxIn qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo)
-import Clb.ClbLedgerState (EmulatedLedgerState (..), currentBlock, initialState, memPoolState, setSlot, setUtxo)
+import Clb.ClbLedgerState (EmulatedLedgerState (..))
 import Clb.Era (EmulatorEra)
 import Clb.MockConfig (MockConfig (..))
 import Clb.MockConfig qualified as X (defaultBabbage)
 import Clb.Params (PParams, genesisDefaultsFromParams)
-import Clb.TimeSlot (SlotConfig (..), slotConfigToEpochInfo)
+import Clb.TimeSlot (SlotConfig (..), slotConfigToEpochInfo, utcTimeToPOSIXTime)
 import Clb.Tx (OnChainTx (..))
-import Control.Arrow (ArrowChoice (..))
-import Control.Lens (over, (&), (.~), (^.))
-import Control.Monad (when)
+import Control.Arrow ((&&&))
+import Control.Monad (forever, void)
 import Control.Monad.Identity (Identity (runIdentity))
-import Control.Monad.Reader (runReader)
-import Control.Monad.State (MonadState (get), StateT, gets, modify, modify', put, runState)
-import Control.Monad.Trans (MonadIO)
+import Control.Monad.Reader (ReaderT (runReaderT), asks, MonadReader)
+import Control.Monad.Writer (WriterT (runWriterT), tell, MonadWriter)
+import Control.Monad.Trans (MonadIO (..))
 import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
-import Control.State.Transition (SingEP (..), globalAssertionPolicy)
-import Control.State.Transition.Extended (
-  ApplySTSOpts (..),
-  TRC (..),
-  ValidationPolicy (..),
-  applySTSOptsEither,
- )
 import Data.Char (isSpace)
 import Data.Foldable (toList)
 import Data.Function (on)
@@ -118,11 +95,39 @@ import PlutusLedgerApi.V1 qualified as PV1
 import PlutusLedgerApi.V2 qualified as PV2
 import Prettyprinter (Doc, Pretty, colon, fillSep, hang, indent, pretty, vcat, vsep, (<+>))
 import Test.Cardano.Ledger.Core.KeyPair qualified as TL
-import Text.Show.Pretty (ppShow)
+import qualified Ouroboros.Network.Protocol.LocalStateQuery.Type as Ouroboros
+
+import Cardano.Testnet
+
+import qualified Hedgehog as H
+import qualified Control.Concurrent.STM as STM
+
+import Testnet.Property.Utils (integrationWorkspace)
+import Control.Concurrent (threadDelay, ThreadId)
+import Control.Monad.Trans.Resource
+import qualified Hedgehog.Extras.Stock as H'
+import Testnet.Runtime
+    ( PaymentKeyInfo(paymentKeyInfoPair),
+      PaymentKeyPair(paymentVKey, paymentSKey),
+      PoolNode(poolRuntime),
+      TestnetRuntime(..), getStartTime, shelleyGenesis )
+import Control.Exception (Exception, throwIO)
+import qualified Data.Set as Set
+import Ouroboros.Network.Protocol.LocalTxSubmission.Type (SubmitResult(..))
+import qualified Cardano.Api.InMode as C
 
 --------------------------------------------------------------------------------
 -- Base emulator types
 --------------------------------------------------------------------------------
+
+type KeyPair = TL.KeyPair L.Payment (Core.EraCrypto EmulatorEra)
+
+data ClbRuntime = ClbRuntime
+  { nodeConnectInfo :: Api.LocalNodeConnectInfo
+  , wallets         :: [(FilePath, FilePath)]
+  , slotConfig      :: SlotConfig
+  , threadId        :: ThreadId
+  }
 
 -- FIXME: legacy types converted into type synonyms
 type CardanoTx = Core.Tx EmulatorEra
@@ -131,37 +136,23 @@ type ValidationError = L.ApplyTxError EmulatorEra
 data ValidationResult
   = -- | A transaction failed to be validated by Ledger
     Fail !CardanoTx !ValidationError
-  | Success !EmulatedLedgerState !OnChainTx
+  | Success !OnChainTx
   deriving stock (Show)
 
 --------------------------------------------------------------------------------
 -- CLB base monad (instead of PSM's Run)
 --------------------------------------------------------------------------------
 
-newtype ClbT m a = ClbT {unwrapClbT :: StateT ClbState m a}
+newtype Clb a = Clb {unwrapClb :: ReaderT ClbRuntime (WriterT (Log LogEntry) IO) a }
   deriving newtype
     ( Functor
     , Applicative
     , Monad
     , MonadIO
     , MonadFail
-    , MonadState ClbState
+    , MonadReader ClbRuntime
+    , MonadWriter (Log LogEntry)
     )
-
--- | State monad wrapper to run emulator.
-type Clb a = ClbT Identity a
-
-{- | Emulator state: ledger state + some additional things
-FIXME: remove non-state parts like MockConfig and Log (?)
--}
-data ClbState = ClbState
-  { emulatedLedgerState :: !EmulatedLedgerState
-  , mockConfig :: !MockConfig
-  , -- FIXME: rename, this is non-inline dataums cache
-    mockDatums :: !(M.Map P.DatumHash P.Datum)
-  , mockInfo :: !(Log LogEntry)
-  , mockFails :: !(Log FailReason)
-  }
 
 data LogEntry = LogEntry
   { leLevel :: !LogLevel
@@ -194,50 +185,57 @@ newtype FailReason
   deriving (Show)
 
 -- | Run CLB emulator.
-runClb :: Clb a -> ClbState -> (a, ClbState)
-runClb (ClbT act) = runState act
+runClb :: Clb a -> ClbRuntime -> IO (a, Log LogEntry)
+runClb (Clb act) = runWriterT . runReaderT act
 
--- | Init emulator state.
-initClb :: MockConfig -> Api.Value -> Api.Value -> ClbState
-initClb
-  cfg@MockConfig {mockConfigProtocol = pparams}
-  _initVal
-  walletFunds =
-    ClbState
-      { emulatedLedgerState = setUtxo pparams utxos (initialState pparams)
-      , mockDatums = M.empty
-      , mockConfig = cfg
-      , mockInfo = mempty
-      , mockFails = mempty
-      }
-    where
-      utxos = L.UTxO $ M.fromList $ mkGenesis walletFunds <$> [1 .. 10]
+-- Based on: https://github.com/IntersectMBO/cardano-node/blob/master/cardano-testnet/src/Testnet/Property/Run.hs
+-- They are using hedgehog (property testing framework) to orchestrate a testnet running in the background
+-- ....for some god forsaken reason
+-- the result is very awkward.
+initClb :: IO ClbRuntime
+initClb = do
+  tmvRuntime <- STM.newEmptyTMVarIO
 
-      -- genesis :: (L.TxIn (Core.EraCrypto EmulatorEra), Core.TxOut EmulatorEra)
-      -- genesis =
-      --   ( L.mkTxInPartial genesisTxId 0
-      --   , L.TxOutCompact
-      --       (L.compactAddr $ mkAddr' $ intToKeyPair 0) -- TODO: use wallet distribution
-      --       (fromJust $ L.toCompact $ C.toMaryValue $ valueToApi initVal)
-      --   )
+  void . H.check $ integrationWorkspace "testnet" $ \workspaceDir -> do
+    conf <- mkConf workspaceDir
 
-      mkGenesis :: Api.Value -> Integer -> (L.TxIn (Core.EraCrypto EmulatorEra), Core.TxOut EmulatorEra)
-      mkGenesis walletFund wallet =
-        ( L.mkTxInPartial genesisTxId wallet
-        , L.TxOutCompact
-            (L.compactAddr $ mkAddr' $ intToKeyPair wallet)
-            (fromJust $ L.toCompact $ C.toMaryValue walletFund)
-        )
+    -- Fork a thread to keep alive indefinitely any resources allocated by testnet.
+    tid <- H.evalM . liftResourceT . resourceForkIO . forever . liftIO $ threadDelay 10000000
 
-      mkAddr' payKey = L.Addr L.Testnet (TL.mkCred payKey) L.StakeRefNull
+    let testnetOpts = cardanoDefaultTestnetOptions
+    tr@TestnetRuntime
+      { wallets
+      , poolNodes
+      , testnetMagic
+      } <- cardanoTestnetDefault testnetOpts conf
+    startTime <- getStartTime workspaceDir tr
 
-      -- \| genesis transaction ID
-      genesisTxId :: L.TxId L.StandardCrypto
-      genesisTxId = L.TxId $ L.unsafeMakeSafeHash dummyHash
+    liftIO . STM.atomically
+      $ STM.writeTMVar tmvRuntime ClbRuntime
+          -- TODO: Consider obtaining everything here from shelleyGenesis rather than testnetOpts.
+          -- See: https://www.doitwithlovelace.io/haddock/cardano-ledger-shelley/html/Cardano-Ledger-Shelley-Genesis.html
+          -- See: https://github.com/IntersectMBO/cardano-node/blob/43149909fc4942e93e14a2686826543a2d9432bf/cardano-testnet/src/Testnet/Types.hs#L155
+          { nodeConnectInfo = Api.LocalNodeConnectInfo
+              { localConsensusModeParams = Api.CardanoModeParams
+                  . Api.EpochSlots
+                  . fromIntegral
+                  $ cardanoEpochLength testnetOpts
+              , localNodeNetworkId       = Api.Testnet . Api.NetworkMagic $ fromIntegral testnetMagic
+              , localNodeSocketPath      = Api.File
+                  . H'.sprocketSystemName
+                  . nodeSprocket
+                  . poolRuntime
+                  $ head poolNodes
+              }
+          , slotConfig = SlotConfig
+              { scSlotZeroTime = utcTimeToPOSIXTime startTime
+              , scSlotLength   = round $ cardanoSlotLength testnetOpts * 1000
+              }
+          , wallets         = (paymentSKey &&& paymentVKey) . paymentKeyInfoPair <$> wallets
+          , threadId        = tid
+          }
 
-      -- Hash for genesis transaction
-      dummyHash :: Crypto.Hash Crypto.Blake2b_256 Core.EraIndependentTxBody
-      dummyHash = Crypto.castHash $ Crypto.hashWith CBOR.serialize' ()
+  STM.atomically $ STM.readTMVar tmvRuntime
 
 --------------------------------------------------------------------------------
 -- Trace log (from PSM)
@@ -286,70 +284,78 @@ instance Pretty Slot where
 -- Actions in Clb monad
 --------------------------------------------------------------------------------
 
-getCurrentSlot :: (Monad m) => ClbT m C.SlotNo
-getCurrentSlot = gets (L.ledgerSlotNo . _ledgerEnv . emulatedLedgerState)
+getCurrentSlot :: Clb C.SlotNo
+getCurrentSlot = do
+  info <- asks nodeConnectInfo
+  Api.ChainTip s _ _ <- liftIO $ Api.getLocalChainTip info
+  pure s
 
 -- | Log a generic (non-typed) error.
-logError :: (Monad m) => String -> ClbT m ()
+logError :: String -> Clb ()
 logError msg = do
-  logInfo $ LogEntry Error msg
-  logFail $ GenericFail msg
+  logEntry $ LogEntry Error msg
 
--- | Add a non-error log enty.
-logInfo :: (Monad m) => LogEntry -> ClbT m ()
-logInfo le = do
+logEntry :: LogEntry -> Clb ()
+logEntry le = do
   C.SlotNo slotNo <- getCurrentSlot
   let slot = Slot $ toInteger slotNo
-  modify' $ \s -> s {mockInfo = appendLog slot le (mockInfo s)}
-
--- | Log failure.
-logFail :: (Monad m) => FailReason -> ClbT m ()
-logFail res = do
-  C.SlotNo slotNo <- getCurrentSlot
-  let slot = Slot $ toInteger slotNo
-  modify' $ \s -> s {mockFails = appendLog slot res (mockFails s)}
+  tell $ mkLog slot le
 
 -- | Insert event to log
-appendLog :: Slot -> a -> Log a -> Log a
-appendLog slot val (Log xs) = Log (xs Seq.|> (slot, val))
+mkLog :: Slot -> a -> Log a
+mkLog slot val = Log $ pure (slot, val)
 
-getUtxosAtState :: ClbState -> L.UTxO EmulatorEra
-getUtxosAtState state =
-  L.utxosUtxo $
-    L.lsUTxOState $
-      _memPoolState $
-        emulatedLedgerState state
+-- FIXME: Implement utxosAtAddress instead of txOutRefAt and also implement utxoAtRef
 
 -- | Read all TxOutRefs that belong to given address.
-txOutRefAt :: (Monad m) => C.AddressInEra C.BabbageEra -> ClbT m [P.TxOutRef]
-txOutRefAt addr = gets (txOutRefAtState $ C.toShelleyAddr addr)
+txOutRefAt :: C.AddressInEra C.BabbageEra -> Clb [P.TxOutRef]
+txOutRefAt addr = asks nodeConnectInfo >>= txOutRefAtState (C.toShelleyAddr addr)
 
 -- | Read all TxOutRefs that belong to given address.
-txOutRefAtState :: L.Addr L.StandardCrypto -> ClbState -> [P.TxOutRef]
-txOutRefAtState addr st = transTxIn <$> M.keys (M.filter atAddr utxos)
-  where
-    utxos = L.unUTxO $ getUtxosAtState st
-    atAddr :: L.BabbageTxOut EmulatorEra -> Bool
-    atAddr out = case L.getEitherAddrBabbageTxOut out of
-      Right cAddr -> L.compactAddr addr == cAddr
-      -- Left should never happen (abuse of Either in fact)
-      Left addr' -> addr == addr'
+txOutRefAtState :: L.Addr L.StandardCrypto -> Api.LocalNodeConnectInfo -> Clb [P.TxOutRef]
+txOutRefAtState addr nodeConnectInfo = do
+  x <- fmap Api.unUTxO . liftIO . queryUTxO nodeConnectInfo
+    . Api.QueryUTxOByAddress
+    . Set.singleton
+    $ C.fromShelleyAddrToAny addr
+  pure $ transTxIn . C.toShelleyTxIn <$> M.keys x
+
+newtype CardanoQueryException = CardanoQueryException String
+  deriving stock (Show)
+  deriving anyclass (Exception)
+
+queryCardanoMode :: Api.LocalNodeConnectInfo -> Api.QueryInMode a -> IO a
+queryCardanoMode info q = do
+    e <- Api.queryNodeLocalState info Ouroboros.VolatileTip q
+    case e of
+        Left err -> throwIO $ CardanoQueryException $ show err
+        Right x  -> return x
+
+queryBabbageEra :: Api.LocalNodeConnectInfo -> Api.QueryInShelleyBasedEra Api.BabbageEra a -> IO a
+queryBabbageEra info q = do
+    e <- queryCardanoMode info $ Api.QueryInEra $ Api.QueryInShelleyBasedEra Api.ShelleyBasedEraBabbage q
+    case e of
+        Left err -> throwIO $ CardanoQueryException $ show err
+        Right x  -> return x
+
+queryUTxO :: Api.LocalNodeConnectInfo -> Api.QueryUTxOFilter -> IO (C.UTxO C.BabbageEra)
+queryUTxO info q = queryBabbageEra info $ Api.QueryUTxO q
 
 -- | Read all TxOutRefs that belong to given payment credential.
 txOutRefAtPaymentCred :: P.Credential -> Clb [P.TxOutRef]
-txOutRefAtPaymentCred cred = gets (txOutRefAtPaymentCredState cred)
+txOutRefAtPaymentCred cred = undefined -- FIXME:
 
 -- | Read all TxOutRefs that belong to given payment credential.
-txOutRefAtPaymentCredState :: P.Credential -> ClbState -> [P.TxOutRef]
+txOutRefAtPaymentCredState :: P.Credential -> ClbRuntime -> [P.TxOutRef]
 txOutRefAtPaymentCredState _cred _st = undefined -- FIXME:
 
-getEpochInfo :: (Monad m) => ClbT m (EpochInfo (Either Text))
-getEpochInfo =
-  gets (slotConfigToEpochInfo . mockConfigSlotConfig . mockConfig)
+getEpochInfo :: Clb (EpochInfo (Either Text))
+getEpochInfo = asks (slotConfigToEpochInfo . slotConfig)
 
-getGlobals :: (Monad m) => ClbT m Globals
+getGlobals :: Clb Globals
 getGlobals = do
-  pparams <- gets (mockConfigProtocol . mockConfig)
+  info <- asks nodeConnectInfo
+  pparams <- liftIO $ queryBabbageEra info Api.QueryProtocolParameters
   -- FIXME: fromJust
   let majorVer =
         fromJust $
@@ -366,25 +372,15 @@ getGlobals = do
       epochInfo
       majorVer
 
--- | Run `applyTx`, if succeed update state and record datums
-sendTx :: (Monad m) => C.Tx C.BabbageEra -> ClbT m ValidationResult
+sendTx :: C.Tx C.BabbageEra -> Clb ValidationResult
 sendTx apiTx@(C.ShelleyTx _ tx) = do
-  state@ClbState {emulatedLedgerState} <- get
-  globals <- getGlobals
-  case applyTx ValidateAll globals emulatedLedgerState tx of
-    Right (newState, vtx) -> do
-      put $ state {emulatedLedgerState = newState}
-      recordNewDatums
-      return $ Success newState vtx
-    Left err -> return $ Fail tx err
-  where
-    recordNewDatums = do
-      state@ClbState {mockDatums} <- get
-      let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
-      put $
-        state
-          { mockDatums = M.union mockDatums txDatums
-          }
+  info <- asks nodeConnectInfo
+  res <- liftIO $ Api.submitTxToNodeLocal info $ Api.TxInMode Api.ShelleyBasedEraBabbage apiTx
+  case res of
+    SubmitSuccess  -> pure $ Success . OnChainTx $ L.unsafeMakeValidated tx
+    SubmitFail (C.TxValidationErrorInCardanoMode (C.ShelleyTxValidationError C.ShelleyBasedEraBabbage x)) -> pure $ Fail tx x
+    -- TODO: Checked error?
+    _ -> error "absurd!"
 
 {- | Given a 'C.TxBody from a 'C.Tx era', return the datums and redeemers along
 with their hashes.
@@ -414,59 +410,6 @@ datumHash :: PV2.Datum -> PV2.DatumHash
 datumHash (PV2.Datum (PV2.BuiltinData dat)) =
   transDataHash $ L.hashData $ L.Data @(L.AlonzoEra L.StandardCrypto) dat
 
-dumpUtxoState :: Clb ()
-dumpUtxoState = do
-  s <- gets ((^. memPoolState) . emulatedLedgerState)
-  logInfo $ LogEntry Info $ ppShow s
-
---------------------------------------------------------------------------------
--- Helpers for working with emulator traces
---------------------------------------------------------------------------------
-
-{- | Checks that script runs without errors and returns pretty printed failure
- if something bad happens.
--}
-checkErrors :: Clb (Maybe String)
-checkErrors = do
-  failures <- fromLog <$> getFails
-  pure $
-    if null failures
-      then Nothing
-      else Just (init . unlines $ fmap show failures)
-
--- | Return list of failures
-getFails :: Clb (Log FailReason)
-getFails = gets mockFails
-
---------------------------------------------------------------------------------
--- Transactions validation TODO: factor out
---------------------------------------------------------------------------------
-
--- | Code copy-pasted from ledger's `applyTx` to use custom `ApplySTSOpts`
-applyTx ::
-  forall stsUsed.
-  (stsUsed ~ EraRule "LEDGER" EmulatorEra) =>
-  ValidationPolicy ->
-  L.Globals ->
-  EmulatedLedgerState ->
-  Core.Tx EmulatorEra ->
-  Either (L.ApplyTxError EmulatorEra) (EmulatedLedgerState, OnChainTx)
-applyTx asoValidation globals oldState@EmulatedLedgerState {_ledgerEnv, _memPoolState} tx = do
-  newMempool <-
-    left L.ApplyTxError
-      $ flip runReader globals
-        . applySTSOptsEither @stsUsed opts
-      $ TRC (_ledgerEnv, _memPoolState, tx)
-  let vtx = OnChainTx $ L.unsafeMakeValidated tx
-  pure (oldState & memPoolState .~ newMempool & over currentBlock (vtx :), vtx)
-  where
-    opts =
-      ApplySTSOpts
-        { asoAssertions = globalAssertionPolicy
-        , asoValidation
-        , asoEvents = EPDiscard
-        }
-
 --------------------------------------------------------------------------------
 -- Key utils
 --------------------------------------------------------------------------------
@@ -492,11 +435,14 @@ intToCardanoSk :: Integer -> C.SigningKey C.PaymentKey
 intToCardanoSk n = case intToKeyPair @(Core.EraCrypto EmulatorEra) n of
   TL.KeyPair _ sk -> C.PaymentSigningKey sk
 
-waitSlot :: SlotNo -> Clb ()
-waitSlot slot = do
-  currSlot <- getCurrentSlot
-  -- TODO: shall we throw?
-  when (currSlot < slot) $
-    modify $
-      \s@ClbState {emulatedLedgerState = state} ->
-        s {emulatedLedgerState = setSlot slot state}
+waitSlot :: C.SlotNo -> Clb ()
+waitSlot s = void loop
+  where
+    loop :: Clb C.SlotNo
+    loop = do
+        t <- getCurrentSlot
+        if t >= s
+            then pure t
+            else do
+                liftIO $ threadDelay 100_000
+                loop
