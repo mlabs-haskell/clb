@@ -20,7 +20,6 @@ module Clb (
   -- * Actions
   txOutRefAt,
   txOutRefAtState,
-  -- FIXME: implement
   txOutRefAtPaymentCred,
   sendTx,
   ValidationResult (..),
@@ -67,7 +66,7 @@ import Cardano.Binary qualified as CBOR
 import Cardano.Crypto.DSIGN qualified as Crypto
 import Cardano.Crypto.Hash qualified as Crypto
 import Cardano.Crypto.Seed qualified as Crypto
-import Cardano.Ledger.Address qualified as L (compactAddr)
+import Cardano.Ledger.Address qualified as L (compactAddr, decompactAddr)
 import Cardano.Ledger.Api qualified as L
 import Cardano.Ledger.Babbage.TxOut qualified as L (BabbageTxOut (TxOutCompact), getEitherAddrBabbageTxOut)
 import Cardano.Ledger.BaseTypes (Globals)
@@ -75,7 +74,7 @@ import Cardano.Ledger.BaseTypes qualified as L
 import Cardano.Ledger.Compactible qualified as L
 import Cardano.Ledger.Core qualified as Core
 import Cardano.Ledger.Keys qualified as L
-import Cardano.Ledger.Plutus.TxInfo (transDataHash, transTxIn)
+import Cardano.Ledger.Plutus.TxInfo (transDataHash, transTxIn, transCred)
 import Cardano.Ledger.SafeHash qualified as L
 import Cardano.Ledger.Shelley.API qualified as L hiding (TxOutCompact)
 import Cardano.Ledger.Shelley.Core (EraRule)
@@ -341,7 +340,15 @@ txOutRefAtPaymentCred cred = gets (txOutRefAtPaymentCredState cred)
 
 -- | Read all TxOutRefs that belong to given payment credential.
 txOutRefAtPaymentCredState :: P.Credential -> ClbState -> [P.TxOutRef]
-txOutRefAtPaymentCredState _cred _st = undefined -- FIXME:
+txOutRefAtPaymentCredState cred st = fmap transTxIn . M.keys $ M.filter withCred utxos
+  where
+    withCred out = case L.getEitherAddrBabbageTxOut out of
+      Right addr -> addrHasCred $ L.decompactAddr addr
+      Left addr -> addrHasCred addr
+    addrHasCred (L.Addr _ paymentCred _) = transCred paymentCred == cred
+    -- Not considering byron addresses.
+    addrHasCred _                        = False
+    utxos = L.unUTxO $ getUtxosAtState st
 
 getEpochInfo :: (Monad m) => ClbT m (EpochInfo (Either Text))
 getEpochInfo =
