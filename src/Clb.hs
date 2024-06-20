@@ -74,7 +74,7 @@ import Cardano.Ledger.BaseTypes qualified as L
 import Cardano.Ledger.Compactible qualified as L
 import Cardano.Ledger.Core qualified as Core
 import Cardano.Ledger.Keys qualified as L
-import Cardano.Ledger.Plutus.TxInfo (transDataHash, transTxIn, transCred)
+import Cardano.Ledger.Plutus.TxInfo (transCred, transDataHash, transTxIn)
 import Cardano.Ledger.SafeHash qualified as L
 import Cardano.Ledger.Shelley.API qualified as L hiding (TxOutCompact)
 import Cardano.Ledger.Shelley.Core (EraRule)
@@ -347,7 +347,7 @@ txOutRefAtPaymentCredState cred st = fmap transTxIn . M.keys $ M.filter withCred
       Left addr -> addrHasCred addr
     addrHasCred (L.Addr _ paymentCred _) = transCred paymentCred == cred
     -- Not considering byron addresses.
-    addrHasCred _                        = False
+    addrHasCred _ = False
     utxos = L.unUTxO $ getUtxosAtState st
 
 getEpochInfo :: (Monad m) => ClbT m (EpochInfo (Either Text))
