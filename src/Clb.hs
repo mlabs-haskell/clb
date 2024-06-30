@@ -7,7 +7,7 @@ module Clb (
 
   -- * CLB Monad
   Clb,
-  ClbT (unwrapClbT),
+  ClbT (..),
 
   -- * CLB internals (revise)
   ClbState (..),
@@ -95,7 +95,7 @@ import Control.Monad (when)
 import Control.Monad.Identity (Identity (runIdentity))
 import Control.Monad.Reader (runReader)
 import Control.Monad.State (MonadState (get), StateT, gets, modify, modify', put, runState)
-import Control.Monad.Trans (MonadIO)
+import Control.Monad.Trans (MonadIO, MonadTrans)
 import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
 import Control.State.Transition (SingEP (..), globalAssertionPolicy)
 import Control.State.Transition.Extended (
@@ -146,6 +146,7 @@ newtype ClbT m a = ClbT {unwrapClbT :: StateT ClbState m a}
     , MonadIO
     , MonadFail
     , MonadState ClbState
+    , MonadTrans
     )
 
 -- | State monad wrapper to run emulator.
