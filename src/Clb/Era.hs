@@ -1,5 +1,5 @@
 module Clb.Era where
 
-import Ouroboros.Consensus.Shelley.Eras (StandardBabbage)
+import Cardano.Ledger.Api qualified as L
 
-type EmulatorEra = StandardBabbage
+type EmulatorEra = L.BabbageEra L.StandardCrypto
