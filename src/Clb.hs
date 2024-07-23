@@ -1,5 +1,4 @@
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE UndecidableInstances #-}
 
 module Clb (
   -- * Parameters
@@ -68,10 +67,8 @@ import Cardano.Crypto.Hash qualified as Crypto
 import Cardano.Crypto.Seed qualified as Crypto
 import Cardano.Ledger.Address qualified as L (compactAddr, decompactAddr)
 import Cardano.Ledger.Api qualified as L
-import Cardano.Ledger.Babbage.TxOut qualified as L (BabbageTxOut (TxOutCompact), getEitherAddrBabbageTxOut)
 import Cardano.Ledger.BaseTypes (Globals)
 import Cardano.Ledger.BaseTypes qualified as L
-import Cardano.Ledger.Compactible qualified as L
 import Cardano.Ledger.Core qualified as Core
 import Cardano.Ledger.Keys qualified as L
 import Cardano.Ledger.Plutus.TxInfo (transCred, transDataHash, transTxIn)
@@ -82,7 +79,7 @@ import Cardano.Ledger.Slot (SlotNo)
 import Cardano.Ledger.TxIn qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo)
 import Clb.ClbLedgerState (EmulatedLedgerState (..), currentBlock, initialState, memPoolState, setSlot, setUtxo)
-import Clb.Era (EmulatorEra)
+import Clb.Era (IsCardanoLedgerEra, CardanoLedgerEra, maryBasedEra)
 import Clb.MockConfig (MockConfig (..))
 import Clb.MockConfig qualified as X (defaultBabbage)
 import Clb.Params (PParams, genesisDefaultsFromParams)
@@ -124,39 +121,40 @@ import Text.Show.Pretty (ppShow)
 --------------------------------------------------------------------------------
 
 -- FIXME: legacy types converted into type synonyms
-type CardanoTx = Core.Tx EmulatorEra
-type ValidationError = L.ApplyTxError EmulatorEra
+type CardanoTx era = Core.Tx (CardanoLedgerEra era)
+type ValidationError era = L.ApplyTxError (CardanoLedgerEra era)
 
-data ValidationResult
+data ValidationResult era
   = -- | A transaction failed to be validated by Ledger
-    Fail !CardanoTx !ValidationError
-  | Success !EmulatedLedgerState !OnChainTx
-  deriving stock (Show)
+    Fail !(CardanoTx era) !(ValidationError era)
+  | Success !(EmulatedLedgerState era) !(OnChainTx era)
+
+deriving stock instance (IsCardanoLedgerEra era, Show (Core.Tx (CardanoLedgerEra era))) => Show (ValidationResult era)
 
 --------------------------------------------------------------------------------
 -- CLB base monad (instead of PSM's Run)
 --------------------------------------------------------------------------------
 
-newtype ClbT m a = ClbT {unwrapClbT :: StateT ClbState m a}
+newtype ClbT era m a = ClbT {unwrapClbT :: StateT (ClbState era) m a}
   deriving newtype
     ( Functor
     , Applicative
     , Monad
     , MonadIO
     , MonadFail
-    , MonadState ClbState
+    , MonadState (ClbState era)
     , MonadTrans
     )
 
 -- | State monad wrapper to run emulator.
-type Clb a = ClbT Identity a
+type Clb era = ClbT era Identity
 
 {- | Emulator state: ledger state + some additional things
 FIXME: remove non-state parts like MockConfig and Log (?)
 -}
-data ClbState = ClbState
-  { emulatedLedgerState :: !EmulatedLedgerState
-  , mockConfig :: !MockConfig
+data ClbState era = ClbState
+  { emulatedLedgerState :: !(EmulatedLedgerState era)
+  , mockConfig :: !(MockConfig era)
   , -- FIXME: rename, this is non-inline dataums cache
     mockDatums :: !(M.Map P.DatumHash P.Datum)
   , mockInfo :: !(Log LogEntry)
@@ -194,11 +192,11 @@ newtype FailReason
   deriving (Show)
 
 -- | Run CLB emulator.
-runClb :: Clb a -> ClbState -> (a, ClbState)
+runClb :: Clb era a -> ClbState era -> (a, ClbState era)
 runClb (ClbT act) = runState act
 
 -- | Init emulator state.
-initClb :: MockConfig -> Api.Value -> Api.Value -> ClbState
+initClb :: forall era. IsCardanoLedgerEra era => MockConfig era -> Api.Value -> Api.Value -> ClbState era
 initClb
   cfg@MockConfig {mockConfigProtocol = pparams}
   _initVal
@@ -221,14 +219,15 @@ initClb
       --       (fromJust $ L.toCompact $ C.toMaryValue $ valueToApi initVal)
       --   )
 
-      mkGenesis :: Api.Value -> Integer -> (L.TxIn (Core.EraCrypto EmulatorEra), Core.TxOut EmulatorEra)
+      mkGenesis :: Api.Value -> Integer -> (L.TxIn L.StandardCrypto, Core.TxOut (C.ShelleyLedgerEra era))
       mkGenesis walletFund wallet =
         ( L.mkTxInPartial genesisTxId wallet
-        , L.TxOutCompact
-            (L.compactAddr $ mkAddr' $ intToKeyPair wallet)
-            (fromJust $ L.toCompact $ C.toMaryValue walletFund)
+        , L.mkBasicTxOut
+            (mkAddr' $ intToKeyPair wallet)
+            (C.toLedgerValue (maryBasedEra @era) walletFund)
         )
 
+      mkAddr' :: TL.KeyPair 'L.Payment L.StandardCrypto -> L.Addr L.StandardCrypto
       mkAddr' payKey = L.Addr L.Testnet (TL.mkCred payKey) L.StakeRefNull
 
       -- \| genesis transaction ID
@@ -286,24 +285,24 @@ instance Pretty Slot where
 -- Actions in Clb monad
 --------------------------------------------------------------------------------
 
-getCurrentSlot :: (Monad m) => ClbT m C.SlotNo
+getCurrentSlot :: Monad m => ClbT era m C.SlotNo
 getCurrentSlot = gets (L.ledgerSlotNo . _ledgerEnv . emulatedLedgerState)
 
 -- | Log a generic (non-typed) error.
-logError :: (Monad m) => String -> ClbT m ()
+logError :: Monad m => String -> ClbT era m ()
 logError msg = do
   logInfo $ LogEntry Error msg
   logFail $ GenericFail msg
 
 -- | Add a non-error log enty.
-logInfo :: (Monad m) => LogEntry -> ClbT m ()
+logInfo :: Monad m => LogEntry -> ClbT era m ()
 logInfo le = do
   C.SlotNo slotNo <- getCurrentSlot
   let slot = Slot $ toInteger slotNo
   modify' $ \s -> s {mockInfo = appendLog slot le (mockInfo s)}
 
 -- | Log failure.
-logFail :: (Monad m) => FailReason -> ClbT m ()
+logFail :: Monad m => FailReason -> ClbT era m ()
 logFail res = do
   C.SlotNo slotNo <- getCurrentSlot
   let slot = Slot $ toInteger slotNo
@@ -313,7 +312,7 @@ logFail res = do
 appendLog :: Slot -> a -> Log a -> Log a
 appendLog slot val (Log xs) = Log (xs Seq.|> (slot, val))
 
-getUtxosAtState :: ClbState -> L.UTxO EmulatorEra
+getUtxosAtState :: ClbState era -> L.UTxO (CardanoLedgerEra era)
 getUtxosAtState state =
   L.utxosUtxo $
     L.lsUTxOState $
@@ -321,29 +320,28 @@ getUtxosAtState state =
         emulatedLedgerState state
 
 -- | Read all TxOutRefs that belong to given address.
-txOutRefAt :: (Monad m) => C.AddressInEra C.BabbageEra -> ClbT m [P.TxOutRef]
-txOutRefAt addr = gets (txOutRefAtState $ C.toShelleyAddr addr)
+txOutRefAt :: forall era m. (Monad m, IsCardanoLedgerEra era) => C.AddressInEra era -> ClbT era m [P.TxOutRef]
+txOutRefAt addr = gets (txOutRefAtState @era $ C.toShelleyAddr addr)
 
 -- | Read all TxOutRefs that belong to given address.
-txOutRefAtState :: L.Addr L.StandardCrypto -> ClbState -> [P.TxOutRef]
+txOutRefAtState :: IsCardanoLedgerEra era => L.Addr L.StandardCrypto -> ClbState era -> [P.TxOutRef]
 txOutRefAtState addr st = transTxIn <$> M.keys (M.filter atAddr utxos)
   where
     utxos = L.unUTxO $ getUtxosAtState st
-    atAddr :: L.BabbageTxOut EmulatorEra -> Bool
-    atAddr out = case L.getEitherAddrBabbageTxOut out of
+    atAddr out = case out ^. Core.addrEitherTxOutL of
       Right cAddr -> L.compactAddr addr == cAddr
       -- Left should never happen (abuse of Either in fact)
       Left addr' -> addr == addr'
 
 -- | Read all TxOutRefs that belong to given payment credential.
-txOutRefAtPaymentCred :: P.Credential -> Clb [P.TxOutRef]
+txOutRefAtPaymentCred :: IsCardanoLedgerEra era => P.Credential -> Clb era [P.TxOutRef]
 txOutRefAtPaymentCred cred = gets (txOutRefAtPaymentCredState cred)
 
 -- | Read all TxOutRefs that belong to given payment credential.
-txOutRefAtPaymentCredState :: P.Credential -> ClbState -> [P.TxOutRef]
+txOutRefAtPaymentCredState :: IsCardanoLedgerEra era => P.Credential -> ClbState era -> [P.TxOutRef]
 txOutRefAtPaymentCredState cred st = fmap transTxIn . M.keys $ M.filter withCred utxos
   where
-    withCred out = case L.getEitherAddrBabbageTxOut out of
+    withCred out = case out ^. Core.addrEitherTxOutL of
       Right addr -> addrHasCred $ L.decompactAddr addr
       Left addr -> addrHasCred addr
     addrHasCred (L.Addr _ paymentCred _) = transCred paymentCred == cred
@@ -351,11 +349,11 @@ txOutRefAtPaymentCredState cred st = fmap transTxIn . M.keys $ M.filter withCred
     addrHasCred _ = False
     utxos = L.unUTxO $ getUtxosAtState st
 
-getEpochInfo :: (Monad m) => ClbT m (EpochInfo (Either Text))
+getEpochInfo :: Monad m => ClbT era m (EpochInfo (Either Text))
 getEpochInfo =
   gets (slotConfigToEpochInfo . mockConfigSlotConfig . mockConfig)
 
-getGlobals :: (Monad m) => ClbT m Globals
+getGlobals :: forall era m. (Monad m, IsCardanoLedgerEra era) => ClbT era m Globals
 getGlobals = do
   pparams <- gets (mockConfigProtocol . mockConfig)
   -- FIXME: fromJust
@@ -366,16 +364,16 @@ getGlobals = do
               L.mkVersion $
                 fst $
                   C.protocolParamProtocolVersion $
-                    C.fromLedgerPParams C.ShelleyBasedEraBabbage pparams
+                    C.fromLedgerPParams (C.shelleyBasedEra @era) pparams
   epochInfo <- getEpochInfo
-  return $
+  pure $
     L.mkShelleyGlobals
       genesisDefaultsFromParams
       epochInfo
       majorVer
 
 -- | Run `applyTx`, if succeed update state and record datums
-sendTx :: (Monad m) => C.Tx C.BabbageEra -> ClbT m ValidationResult
+sendTx :: forall era m. (Monad m, IsCardanoLedgerEra era) => C.Tx era -> ClbT era m (ValidationResult era)
 sendTx apiTx@(C.ShelleyTx _ tx) = do
   state@ClbState {emulatedLedgerState} <- get
   globals <- getGlobals
@@ -422,7 +420,7 @@ datumHash :: PV2.Datum -> PV2.DatumHash
 datumHash (PV2.Datum (PV2.BuiltinData dat)) =
   transDataHash $ L.hashData $ L.Data @(L.AlonzoEra L.StandardCrypto) dat
 
-dumpUtxoState :: Clb ()
+dumpUtxoState :: IsCardanoLedgerEra era => Clb era ()
 dumpUtxoState = do
   s <- gets ((^. memPoolState) . emulatedLedgerState)
   logInfo $ LogEntry Info $ ppShow s
@@ -434,7 +432,7 @@ dumpUtxoState = do
 {- | Checks that script runs without errors and returns pretty printed failure
  if something bad happens.
 -}
-checkErrors :: Clb (Maybe String)
+checkErrors :: Clb era (Maybe String)
 checkErrors = do
   failures <- fromLog <$> getFails
   pure $
@@ -443,7 +441,7 @@ checkErrors = do
       else Just (init . unlines $ fmap show failures)
 
 -- | Return list of failures
-getFails :: Clb (Log FailReason)
+getFails :: Clb era (Log FailReason)
 getFails = gets mockFails
 
 --------------------------------------------------------------------------------
@@ -452,13 +450,13 @@ getFails = gets mockFails
 
 -- | Code copy-pasted from ledger's `applyTx` to use custom `ApplySTSOpts`
 applyTx ::
-  forall stsUsed.
-  (stsUsed ~ EraRule "LEDGER" EmulatorEra) =>
+  forall era stsUsed.
+  (stsUsed ~ EraRule "LEDGER" (CardanoLedgerEra era), IsCardanoLedgerEra era) =>
   ValidationPolicy ->
   L.Globals ->
-  EmulatedLedgerState ->
-  Core.Tx EmulatorEra ->
-  Either (L.ApplyTxError EmulatorEra) (EmulatedLedgerState, OnChainTx)
+  EmulatedLedgerState era ->
+  Core.Tx (CardanoLedgerEra era) ->
+  Either (L.ApplyTxError (CardanoLedgerEra era)) (EmulatedLedgerState era, OnChainTx era)
 applyTx asoValidation globals oldState@EmulatedLedgerState {_ledgerEnv, _memPoolState} tx = do
   newMempool <-
     left L.ApplyTxError
@@ -480,7 +478,7 @@ applyTx asoValidation globals oldState@EmulatedLedgerState {_ledgerEnv, _memPool
 --------------------------------------------------------------------------------
 
 -- | Create key pair from an integer (deterministic)
-intToKeyPair :: (L.Crypto c) => Integer -> TL.KeyPair r c
+intToKeyPair :: Integer -> TL.KeyPair r L.StandardCrypto
 intToKeyPair n = TL.KeyPair vk sk
   where
     sk = Crypto.genKeyDSIGN $ mkSeedFromInteger n
@@ -497,10 +495,10 @@ intToKeyPair n = TL.KeyPair vk sk
         Crypto.hashWithSerialiser @Crypto.Blake2b_256 CBOR.toCBOR stuff
 
 intToCardanoSk :: Integer -> C.SigningKey C.PaymentKey
-intToCardanoSk n = case intToKeyPair @(Core.EraCrypto EmulatorEra) n of
+intToCardanoSk n = case intToKeyPair n of
   TL.KeyPair _ sk -> C.PaymentSigningKey sk
 
-waitSlot :: SlotNo -> Clb ()
+waitSlot :: SlotNo -> Clb era ()
 waitSlot slot = do
   currSlot <- getCurrentSlot
   -- TODO: shall we throw?
