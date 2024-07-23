@@ -7,6 +7,8 @@ module Clb.MockConfig (
   defaultMockConfig,
   defaultBabbage,
   defaultBabbageParams,
+  defaultConway,
+  defaultConwayParams,
   skipLimits,
   warnLimits,
   forceLimits,
@@ -16,6 +18,7 @@ import Cardano.Api qualified as C
 import Clb.Era (CardanoLedgerEra)
 import Clb.Params (
   PParams,
+  defaultConwayParams,
   defaultBabbageParams,
  )
 import Clb.TimeSlot
@@ -52,10 +55,15 @@ defaultSlotConfig =
 
 {- | Default Babbage era config. If we use this parameter
  then Babbage era TXs will be used for testing
- FIXME: remove rest of `Babbage` naming distinction (not applicable anymore)
 -}
 defaultBabbage :: MockConfig C.BabbageEra
 defaultBabbage = defaultMockConfig defaultBabbageParams
+
+{- | Default Babbage era config. If we use this parameter
+ then Babbage era TXs will be used for testing
+-}
+defaultConway :: MockConfig C.ConwayEra
+defaultConway = defaultMockConfig defaultConwayParams
 
 -- | Default blockchain config.
 defaultMockConfig :: L.PParams (CardanoLedgerEra era) -> MockConfig era

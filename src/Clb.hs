@@ -3,6 +3,7 @@
 module Clb (
   -- * Parameters
   X.defaultBabbage,
+  X.defaultConway,
 
   -- * CLB Monad
   Clb,
@@ -81,7 +82,7 @@ import Cardano.Slotting.EpochInfo (EpochInfo)
 import Clb.ClbLedgerState (EmulatedLedgerState (..), currentBlock, initialState, memPoolState, setSlot, setUtxo)
 import Clb.Era (IsCardanoLedgerEra, CardanoLedgerEra, maryBasedEra)
 import Clb.MockConfig (MockConfig (..))
-import Clb.MockConfig qualified as X (defaultBabbage)
+import Clb.MockConfig qualified as X (defaultBabbage, defaultConway)
 import Clb.Params (PParams, genesisDefaultsFromParams)
 import Clb.TimeSlot (SlotConfig (..), slotConfigToEpochInfo)
 import Clb.Tx (OnChainTx (..))
