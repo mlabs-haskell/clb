@@ -67,17 +67,22 @@ import Cardano.Crypto.DSIGN qualified as Crypto
 import Cardano.Crypto.Hash qualified as Crypto
 import Cardano.Crypto.Seed qualified as Crypto
 import Cardano.Ledger.Address qualified as L (compactAddr, decompactAddr)
+import Cardano.Ledger.Alonzo.Plutus.Evaluate qualified as PlutusEval
+import Cardano.Ledger.Alonzo.Rules qualified as Rules.A
 import Cardano.Ledger.Api qualified as L
+import Cardano.Ledger.Babbage.Rules qualified as Rules.B
 import Cardano.Ledger.Babbage.TxOut qualified as L (BabbageTxOut (TxOutCompact), getEitherAddrBabbageTxOut)
 import Cardano.Ledger.BaseTypes (Globals)
 import Cardano.Ledger.BaseTypes qualified as L
 import Cardano.Ledger.Compactible qualified as L
 import Cardano.Ledger.Core qualified as Core
 import Cardano.Ledger.Keys qualified as L
+import Cardano.Ledger.Plutus qualified as LedgerPlutus
 import Cardano.Ledger.Plutus.TxInfo (transCred, transDataHash, transTxIn)
 import Cardano.Ledger.SafeHash qualified as L
 import Cardano.Ledger.Shelley.API qualified as L hiding (TxOutCompact)
 import Cardano.Ledger.Shelley.Core (EraRule)
+import Cardano.Ledger.Shelley.Rules qualified as Rules.S
 import Cardano.Ledger.Slot (SlotNo)
 import Cardano.Ledger.TxIn qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo)
@@ -89,20 +94,22 @@ import Clb.Params (PParams, genesisDefaultsFromParams)
 import Clb.TimeSlot (SlotConfig (..), slotConfigToEpochInfo)
 import Clb.Tx (OnChainTx (..))
 import Control.Arrow (ArrowChoice (..))
-import Control.Lens (over, (&), (.~), (^.))
+import Control.Lens (over, (&), (.~), (^.), unsnoc)
 import Control.Monad (when)
+import Control.Monad.Except (MonadError (throwError), liftEither, runExcept, runExceptT)
 import Control.Monad.Identity (Identity (runIdentity))
-import Control.Monad.Reader (runReader)
+import Control.Monad.Reader (MonadTrans (lift), runReader)
 import Control.Monad.State (MonadState (get), StateT, gets, modify, modify', put, runState)
-import Control.Monad.Trans (MonadIO, MonadTrans)
-import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
+import Control.Monad.Trans (MonadIO)
+import Control.Monad.Trans.Maybe (MaybeT (runMaybeT), hoistMaybe, maybeToExceptT)
 import Control.State.Transition (SingEP (..), globalAssertionPolicy)
 import Control.State.Transition.Extended (
   ApplySTSOpts (..),
   TRC (..),
   ValidationPolicy (..),
-  applySTSOptsEither,
+  applySTSOptsEither
  )
+import Data.Bifunctor (Bifunctor (first))
 import Data.Char (isSpace)
 import Data.Foldable (toList)
 import Data.Function (on)
@@ -115,7 +122,9 @@ import Data.Text (Text)
 import PlutusLedgerApi.V1 qualified as P (Credential, Datum, DatumHash, TxOutRef)
 import PlutusLedgerApi.V1 qualified as PV1
 import PlutusLedgerApi.V2 qualified as PV2
-import Prettyprinter (Doc, Pretty, colon, fillSep, hang, indent, pretty, vcat, vsep, (<+>))
+import PlutusLedgerApi.V3 qualified as PV3
+import Prettyprinter (Doc, Pretty, pretty, (<+>))
+import Prettyprinter qualified as Pretty
 import Test.Cardano.Ledger.Core.KeyPair qualified as TL
 import Text.Show.Pretty (ppShow)
 
@@ -177,12 +186,12 @@ instance Pretty LogLevel where
   pretty Error = "[ERROR]"
 
 instance Pretty LogEntry where
-  pretty (LogEntry l msg) = pretty l <+> hang 1 msg'
+  pretty (LogEntry l msg) = pretty l <+> Pretty.hang 1 msg'
     where
       ws = wordsIdent <$> lines msg
       wsD = fmap pretty <$> ws
-      ls = fillSep <$> wsD
-      msg' = vsep ls
+      ls = Pretty.fillSep <$> wsD
+      msg' = Pretty.vsep ls
 
 -- | Like 'words' but keeps leading identation.
 wordsIdent :: String -> [String]
@@ -261,9 +270,9 @@ instance Monoid (Log a) where
   mempty = Log Seq.empty
 
 ppLog :: Log LogEntry -> Doc ann
-ppLog = vcat . fmap ppSlot . fromGroupLog
+ppLog = Pretty.vcat . fmap ppSlot . fromGroupLog
   where
-    ppSlot (slot, events) = vcat [pretty slot <> colon, indent 2 (vcat $ pretty <$> events)]
+    ppSlot (slot, events) = Pretty.vcat [pretty slot <> Pretty.colon, Pretty.indent 2 (Pretty.vcat $ pretty <$> events)]
 
 fromGroupLog :: Log a -> [(Slot, [a])]
 fromGroupLog = fmap toGroup . groupBy ((==) `on` fst) . fromLog
@@ -281,6 +290,30 @@ newtype Slot = Slot {getSlot :: Integer}
 
 instance Pretty Slot where
   pretty (Slot i) = "Slot" <+> pretty i
+
+data FailingPlutusScript = FailingPlutusScript
+  { fpsHash :: !(L.ScriptHash L.StandardCrypto)
+  , fpsLanguage :: !LedgerPlutus.Language
+  , fpsArgs :: ![PV2.Data]
+  }
+
+instance Pretty FailingPlutusScript where
+  pretty (FailingPlutusScript {fpsHash, fpsArgs, fpsLanguage}) = Pretty.nest 2 $ Pretty.vsep
+    [ "Failing Plutus Script"
+    , "Plutus language:" <+> Pretty.unsafeViaShow fpsLanguage
+    , "Script hash:" <+> Pretty.unsafeViaShow fpsHash
+    , Pretty.nest 2 . Pretty.vsep $ "Args" : argsDoc
+    , Pretty.nest 2 . Pretty.vsep $ ["ScriptContext", scriptCtxDoc]
+    ]
+    where
+      (argsDoc, scriptCtxDoc) = either error id . runExcept $ do
+        (rawArgs, rawScriptCtx) <- maybeToExceptT "absurd: FailingPlutusScript with no arguments" . hoistMaybe $ unsnoc fpsArgs
+        scriptCtxDoc' <- maybeToExceptT "absurd: FailingPlutusScript with non script context structure as the last argument" . hoistMaybe
+          $ case fpsLanguage of
+            LedgerPlutus.PlutusV1 -> Pretty.viaShow <$> PV2.fromData @PV1.ScriptContext rawScriptCtx
+            LedgerPlutus.PlutusV2 -> Pretty.viaShow <$> PV2.fromData @PV2.ScriptContext rawScriptCtx
+            LedgerPlutus.PlutusV3 -> Pretty.viaShow <$> PV2.fromData @PV3.ScriptContext rawScriptCtx
+        pure (Pretty.viaShow <$> rawArgs, scriptCtxDoc')
 
 --------------------------------------------------------------------------------
 -- Actions in Clb monad
@@ -376,15 +409,39 @@ getGlobals = do
 
 -- | Run `applyTx`, if succeed update state and record datums
 sendTx :: (Monad m) => C.Tx C.BabbageEra -> ClbT m ValidationResult
-sendTx apiTx@(C.ShelleyTx _ tx) = do
-  state@ClbState {emulatedLedgerState} <- get
-  globals <- getGlobals
-  case applyTx ValidateAll globals emulatedLedgerState tx of
-    Right (newState, vtx) -> do
-      put $ state {emulatedLedgerState = newState}
-      recordNewDatums
-      return $ Success newState vtx
-    Left err -> return $ Fail tx err
+sendTx apiTx@(C.ShelleyTx _ tx) = fmap (either (Fail tx) (uncurry Success)) . runExceptT $ do
+  state@ClbState {emulatedLedgerState, mockConfig} <- get
+  globals <- lift getGlobals
+  let utxo = getUtxosAtState state
+      sysS = L.systemStart globals
+      ei = L.epochInfo globals
+      pp = mockConfigProtocol mockConfig
+  sLst <- liftEither . first collectErrorsToApplyTx $ PlutusEval.collectPlutusScriptsWithContext ei sysS pp tx utxo
+  -- This will be more descriptive than just evaluating the scripts with the ledger (during applyTx below).
+  -- Specifically, it gives us access to the script contexts and the logs that we can show in case of script failure.
+  let (scriptLogs, scriptEvalResult) = PlutusEval.evalPlutusScriptsWithLogs tx sLst
+  -- Show the logs and the script context in debug.
+  lift . logInfo . LogEntry Debug $ ppShow scriptLogs
+  case scriptEvalResult of
+    LedgerPlutus.Passes _ -> pure ()
+    LedgerPlutus.Fails _ fs -> do
+      -- Show the logs and the script context in case of failure.
+      lift . logInfo . LogEntry Error . show $ pretty scriptLogs
+      -- for_ plutusWithCtxs $ \LedgerPlutus.PlutusWithContext {pwcScript,pwcScriptHash=fpsHash,pwcDatums=LedgerPlutus.PlutusDatums fpsArgs} -> do
+      --   let langDeducer :: forall l. LedgerPlutus.PlutusLanguage l => Either (LedgerPlutus.Plutus l) (LedgerPlutus.PlutusRunnable l) -> LedgerPlutus.Language
+      --       langDeducer _ = LedgerPlutus.plutusLanguage $ Proxy @l
+      --   -- NOTE: Args is essentially (datum, redeemer, script context) or (redeemer, script context).
+      --   -- See: https://github.com/IntersectMBO/cardano-ledger/blob/ed6d38b0bf0a54504c781b3c274745846476ca3c/eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs#L190
+      --   lift . logInfo . LogEntry Error . show $ pretty FailingPlutusScript {fpsHash, fpsArgs,fpsLanguage=langDeducer pwcScript}
+      let failure = liftAlonzoUtxosFailure $
+            Rules.A.ValidationTagMismatch @EmulatorEra
+              (tx ^. L.isValidTxL)
+              (Rules.A.FailedUnexpectedly (Rules.A.scriptFailureToFailureDescription <$> fs))
+      throwError $ L.ApplyTxError @EmulatorEra [failure]
+  (newState, vtx) <- liftEither $ applyTx ValidateAll globals emulatedLedgerState tx
+  put $ state {emulatedLedgerState = newState}
+  recordNewDatums
+  pure (newState, vtx)
   where
     recordNewDatums = do
       state@ClbState {mockDatums} <- get
@@ -393,6 +450,17 @@ sendTx apiTx@(C.ShelleyTx _ tx) = do
         state
           { mockDatums = M.union mockDatums txDatums
           }
+    -- Adapted from: https://github.com/IntersectMBO/cardano-ledger/blob/411054e40b4e08350049e4eaffdf0cc5f73e9d91/eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs#L199
+    -- Goal is to convert the [CollectError] stuff from the result into ApplyTxError.
+    collectErrorsToApplyTx :: [PlutusEval.CollectError EmulatorEra] -> ValidationError
+    collectErrorsToApplyTx errs =
+      let failure = liftAlonzoUtxosFailure $ Rules.A.CollectErrors errs
+      in L.ApplyTxError [failure]
+
+    -- Replace this with 'injectFailure' when using cardano-ledger-shelley ^>= 1.10.0.0 etc. (waiting for atlas-cardano to use those deps)
+    -- This is hardcoded, needs update every time era changes and is generally terrible.
+    liftAlonzoUtxosFailure :: Rules.A.AlonzoUtxosPredFailure EmulatorEra -> Rules.S.ShelleyLedgerPredFailure EmulatorEra
+    liftAlonzoUtxosFailure = Rules.S.UtxowFailure . Rules.B.UtxoFailure . Rules.B.AlonzoInBabbageUtxoPredFailure . Rules.A.UtxosFailure
 
 {- | Given a 'C.TxBody from a 'C.Tx era', return the datums and redeemers along
 with their hashes.
