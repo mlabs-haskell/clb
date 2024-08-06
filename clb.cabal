@@ -78,10 +78,10 @@ library
     , cardano-ledger-babbage
     , cardano-ledger-binary
     , cardano-ledger-core:{cardano-ledger-core, testlib}
+    , cardano-ledger-conway
     , cardano-ledger-mary
     , cardano-ledger-shelley
     , cardano-slotting
-    , ouroboros-consensus-cardano
     , plutus-core
     , plutus-ledger-api
     , plutus-tx
@@ -97,6 +97,7 @@ executable smoke-test
   build-depends:
     , base
     , cardano-api:{cardano-api, internal}
+    , cardano-ledger-core
     , clb
     , prettyprinter
 
