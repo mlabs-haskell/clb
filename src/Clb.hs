@@ -291,6 +291,7 @@ newtype Slot = Slot {getSlot :: Integer}
 instance Pretty Slot where
   pretty (Slot i) = "Slot" <+> pretty i
 
+-- This data structure is used in a currently commented out logging flow. See note below in 'sendTx'.
 data FailingPlutusScript = FailingPlutusScript
   { fpsHash :: !(L.ScriptHash L.StandardCrypto)
   , fpsLanguage :: !LedgerPlutus.Language
@@ -427,6 +428,12 @@ sendTx apiTx@(C.ShelleyTx _ tx) = fmap (either (Fail tx) (uncurry Success)) . ru
     LedgerPlutus.Fails _ fs -> do
       -- Show the logs and the script context in case of failure.
       lift . logInfo . LogEntry Error . show $ pretty scriptLogs
+      -- NOTE: The logging below is likely not necessary since the ValidationTagMismatch already contains an explanation of the error.
+      -- At least, that's what the codebase suggests
+      -- https://github.com/IntersectMBO/cardano-ledger/blob/ad4704f243e0e62216811b816f210b770f12a420/libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Evaluate.hs#L257C25-L257C53
+      -- https://github.com/IntersectMBO/cardano-ledger/blob/ad4704f243e0e62216811b816f210b770f12a420/eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxos.hs#L364
+      -- If logging is missing, go ahead and try uncommenting the below lines.
+
       -- for_ plutusWithCtxs $ \LedgerPlutus.PlutusWithContext {pwcScript,pwcScriptHash=fpsHash,pwcDatums=LedgerPlutus.PlutusDatums fpsArgs} -> do
       --   let langDeducer :: forall l. LedgerPlutus.PlutusLanguage l => Either (LedgerPlutus.Plutus l) (LedgerPlutus.PlutusRunnable l) -> LedgerPlutus.Language
       --       langDeducer _ = LedgerPlutus.plutusLanguage $ Proxy @l
