@@ -97,6 +97,7 @@ executable smoke-test
   build-depends:
     , base
     , cardano-api:{cardano-api, internal}
+    , cardano-ledger-core
     , clb
     , prettyprinter
 

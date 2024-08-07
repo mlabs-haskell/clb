@@ -1,6 +1,10 @@
 module Main where
 
-import Cardano.Api (Lovelace (Lovelace), lovelaceToValue)
+import Cardano.Api.Value (lovelaceToValue)
+import Cardano.Ledger.Coin (Coin (Coin))
+import Prettyprinter
+import Prettyprinter.Render.String (renderString)
+
 import Clb (
   ClbState (mockInfo),
   checkErrors,
@@ -10,14 +14,12 @@ import Clb (
   ppLog,
   runClb,
  )
-import Prettyprinter
-import Prettyprinter.Render.String (renderString)
 
 main :: IO ()
 main = do
   putStrLn "Welcome to the smoke-test CLB harness!"
-  let _dummyTotalNotUsedNow = lovelaceToValue $ Lovelace 1_000_000_000_000
-  let perWallet = lovelaceToValue $ Lovelace 1_000_000_000
+  let _dummyTotalNotUsedNow = lovelaceToValue $ Coin 1_000_000_000_000
+  let perWallet = lovelaceToValue $ Coin 1_000_000_000
   let (_mbErrors, clb) =
         runClb (dumpUtxoState >> checkErrors) $
           initClb defaultBabbage _dummyTotalNotUsedNow perWallet
