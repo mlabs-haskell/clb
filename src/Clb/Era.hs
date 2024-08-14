@@ -9,23 +9,6 @@ import Cardano.Ledger.Api qualified as L
 import Cardano.Ledger.Shelley.API
 import Data.Default (Default)
 
--- This is available in newer cardano-api. Remove this once we depend on that.
-class IsShelleyBasedEra era => IsMaryBasedEra era where
-  maryBasedEra :: MaryEraOnwards era
-
-instance IsMaryBasedEra MaryEra where
-  maryBasedEra = MaryEraOnwardsMary
-
-instance IsMaryBasedEra AlonzoEra where
-  maryBasedEra = MaryEraOnwardsAlonzo
-
-instance IsMaryBasedEra BabbageEra where
-  maryBasedEra = MaryEraOnwardsBabbage
-
-instance IsMaryBasedEra ConwayEra where
-  maryBasedEra = MaryEraOnwardsConway
-
-
 -- | Helper class for constraining the 'CardanoLedgerEra' closed type family.
 -- Ensures user chosen era (from Cardano.Api.Eras) is valid for usage with CLB.
 class ( ledgerEra ~ CardanoLedgerEra era
