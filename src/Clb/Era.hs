@@ -18,10 +18,7 @@ class ( ledgerEra ~ CardanoLedgerEra era
       , ApplyTx ledgerEra
       , Default (L.GovState ledgerEra)
       , Show (L.GovState ledgerEra)
-      -- The 'IsShelleyBasedEra' constraint may seem redundant with our implementation of 'IsMaryBasedEra', but said constraint
-      -- is missing on the upstream 'IsMaryBasedEra' in newer cardano-api. So if we use the upstream class later, we should uncomment
-      -- this constraint.
-      -- , IsShelleyBasedEra era
+      , IsShelleyBasedEra era
       , IsMaryBasedEra era
       )
       => IsCardanoLedgerEra' era ledgerEra | era -> ledgerEra where
