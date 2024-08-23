@@ -1,3 +1,4 @@
+{-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -18,14 +19,14 @@ module Clb (
   runClb,
 
   -- * Actions
-  txOutRefAt,
-  txOutRefAtState,
-  txOutRefAtPaymentCred,
   sendTx,
   ValidationResult (..),
   OnChainTx (..),
 
   -- * Querying
+  txOutRefAt,
+  txOutRefAtState,
+  txOutRefAtPaymentCred,
   getCurrentSlot,
   getUtxosAtState,
   getEpochInfo,

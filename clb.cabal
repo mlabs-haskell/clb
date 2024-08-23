@@ -51,10 +51,17 @@ library
     Clb.MockConfig
     Clb.TimeSlot
 
+    ClbSocket.Test
+
   other-modules:
     Clb.Era
     Clb.Params
     Clb.Tx
+
+    ClbSocket.Server
+    ClbSocket.Parse
+    ClbSocket.Serialise
+    ClbSocket.Serialise.Tx
 
   build-depends:
     , base               ^>=4.18.0
@@ -68,6 +75,10 @@ library
     , text
     , time
     , transformers
+    , network
+    , aeson
+    , directory
+    , filepath
 
   build-depends:
     , cardano-api:{cardano-api, internal}                 >=8.38.0.0
@@ -87,6 +98,8 @@ library
     , plutus-tx
     , pretty-show
     , small-steps
+    , cardano-ledger-conway
+    , cardano-ledger-byron
 
   hs-source-dirs:  src
 
