@@ -1,4 +1,4 @@
-# 1000121 MLabs - Enhancing and Evolving the Plutus Simple Model (PSM) Test Library - Milestone 2 Report
+# 1000121 MLabs - Enhancing and Evolving the Plutus Simple Model (PSM) Test Library - Milestone 3 Report
 
 _Prepared  by MLabs on August 25, 2024_\
 _Ilia Rodionov, ilia@mlabs.city_
