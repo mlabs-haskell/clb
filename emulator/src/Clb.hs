@@ -11,6 +11,11 @@ module Clb (
 
   -- * CLB internals (revise)
   ClbState (..),
+  emulatedLedgerState,
+  mockConfig,
+  mockDatums,
+  mockInfo,
+  mockFails,
   EmulatedLedgerState (..),
 
   -- * CLB Runner
@@ -24,6 +29,7 @@ module Clb (
   sendTx,
   ValidationResult (..),
   OnChainTx (..),
+  Block,
 
   -- * Querying
   getCurrentSlot,
@@ -57,6 +63,10 @@ module Clb (
   intToKeyPair,
   intToCardanoSk,
   waitSlot,
+  modifySlot,
+  processBlock,
+  addTxToPool,
+  applyTx,
 )
 where
 
@@ -78,18 +88,18 @@ import Cardano.Ledger.Plutus.TxInfo (transCred, transDataHash, transTxIn)
 import Cardano.Ledger.SafeHash qualified as L
 import Cardano.Ledger.Shelley.API qualified as L hiding (TxOutCompact)
 import Cardano.Ledger.Shelley.Core (EraRule)
-import Cardano.Ledger.Slot (SlotNo)
+import Cardano.Ledger.Slot (SlotNo (..))
 import Cardano.Ledger.TxIn qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo)
-import Clb.ClbLedgerState (EmulatedLedgerState (..), currentBlock, initialState, memPoolState, setSlot, setUtxo)
+import Clb.ClbLedgerState (CardanoTx, EmulatedLedgerState (..), TxPool, currentBlock, initialState, memPoolState, setSlot, setUtxo, updateSlot)
 import Clb.Era (EmulatorEra)
 import Clb.MockConfig (MockConfig (..))
 import Clb.MockConfig qualified as X (defaultBabbage)
 import Clb.Params (PParams, genesisDefaultsFromParams)
-import Clb.TimeSlot (SlotConfig (..), slotConfigToEpochInfo)
-import Clb.Tx (OnChainTx (..))
+import Clb.TimeSlot (Slot (..), SlotConfig (..), slotConfigToEpochInfo)
+import Clb.Tx (Block, OnChainTx (..))
 import Control.Arrow (ArrowChoice (..))
-import Control.Lens (over, (&), (.~), (^.))
+import Control.Lens (makeLenses, over, (&), (.~), (^.))
 import Control.Monad (when)
 import Control.Monad.Identity (Identity (runIdentity))
 import Control.Monad.Reader (runReader)
@@ -124,12 +134,12 @@ import Text.Show.Pretty (ppShow)
 --------------------------------------------------------------------------------
 
 -- FIXME: legacy types converted into type synonyms
-type CardanoTx = Core.Tx EmulatorEra
+-- type CardanoTx = Core.Tx EmulatorEra
 type ValidationError = L.ApplyTxError EmulatorEra
 
 data ValidationResult
   = -- | A transaction failed to be validated by Ledger
-    Fail !CardanoTx !ValidationError
+    Fail !(Core.Tx EmulatorEra) !ValidationError
   | Success !EmulatedLedgerState !OnChainTx
   deriving stock (Show)
 
@@ -155,20 +165,24 @@ type Clb a = ClbT Identity a
 FIXME: remove non-state parts like MockConfig and Log (?)
 -}
 data ClbState = ClbState
-  { emulatedLedgerState :: !EmulatedLedgerState
-  , mockConfig :: !MockConfig
+  { _emulatedLedgerState :: !EmulatedLedgerState
+  , _mockConfig :: !MockConfig
   , -- FIXME: rename, this is non-inline dataums cache
-    mockDatums :: !(M.Map P.DatumHash P.Datum)
-  , mockInfo :: !(Log LogEntry)
-  , mockFails :: !(Log FailReason)
+    _mockDatums :: !(M.Map P.DatumHash P.Datum)
+  , _mockInfo :: !(Log LogEntry)
+  , _mockFails :: !(Log FailReason)
+  , _txPool :: !TxPool
   }
+  deriving stock (Show)
 
 data LogEntry = LogEntry
   { leLevel :: !LogLevel
   , leMsg :: !String
   }
+  deriving stock (Show)
 
 data LogLevel = Debug | Info | Warning | Error
+  deriving stock (Show)
 
 instance Pretty LogLevel where
   pretty Debug = "[DEBUG]"
@@ -204,22 +218,15 @@ initClb
   _initVal
   walletFunds =
     ClbState
-      { emulatedLedgerState = setUtxo pparams utxos (initialState pparams)
-      , mockDatums = M.empty
-      , mockConfig = cfg
-      , mockInfo = mempty
-      , mockFails = mempty
+      { _emulatedLedgerState = setUtxo pparams utxos (initialState pparams)
+      , _mockDatums = M.empty
+      , _mockConfig = cfg
+      , _mockInfo = mempty
+      , _mockFails = mempty
+      , _txPool = mempty
       }
     where
       utxos = L.UTxO $ M.fromList $ mkGenesis walletFunds <$> [1 .. 10]
-
-      -- genesis :: (L.TxIn (Core.EraCrypto EmulatorEra), Core.TxOut EmulatorEra)
-      -- genesis =
-      --   ( L.mkTxInPartial genesisTxId 0
-      --   , L.TxOutCompact
-      --       (L.compactAddr $ mkAddr' $ intToKeyPair 0) -- TODO: use wallet distribution
-      --       (fromJust $ L.toCompact $ C.toMaryValue $ valueToApi initVal)
-      --   )
 
       mkGenesis :: Api.Value -> Integer -> (L.TxIn (Core.EraCrypto EmulatorEra), Core.TxOut EmulatorEra)
       mkGenesis walletFund wallet =
@@ -245,7 +252,7 @@ initClb
 
 -- | Log of Slot-timestamped events
 newtype Log a = Log {unLog :: Seq (Slot, a)}
-  deriving (Functor)
+  deriving stock (Show, Functor)
 
 instance Semigroup (Log a) where
   (<>) (Log sa) (Log sb) = Log (merge sa sb)
@@ -275,19 +282,12 @@ fromGroupLog = fmap toGroup . groupBy ((==) `on` fst) . fromLog
 fromLog :: Log a -> [(Slot, a)]
 fromLog (Log s) = toList s
 
-newtype Slot = Slot {getSlot :: Integer}
-  deriving stock (Eq, Ord, Show)
-  deriving newtype (Num, Enum, Real, Integral)
-
-instance Pretty Slot where
-  pretty (Slot i) = "Slot" <+> pretty i
-
 --------------------------------------------------------------------------------
 -- Actions in Clb monad
 --------------------------------------------------------------------------------
 
 getCurrentSlot :: (Monad m) => ClbT m C.SlotNo
-getCurrentSlot = gets (L.ledgerSlotNo . _ledgerEnv . emulatedLedgerState)
+getCurrentSlot = gets (L.ledgerSlotNo . _ledgerEnv . _emulatedLedgerState)
 
 -- | Log a generic (non-typed) error.
 logError :: (Monad m) => String -> ClbT m ()
@@ -300,14 +300,14 @@ logInfo :: (Monad m) => LogEntry -> ClbT m ()
 logInfo le = do
   C.SlotNo slotNo <- getCurrentSlot
   let slot = Slot $ toInteger slotNo
-  modify' $ \s -> s {mockInfo = appendLog slot le (mockInfo s)}
+  modify' $ \s -> s {_mockInfo = appendLog slot le (_mockInfo s)}
 
 -- | Log failure.
 logFail :: (Monad m) => FailReason -> ClbT m ()
 logFail res = do
   C.SlotNo slotNo <- getCurrentSlot
   let slot = Slot $ toInteger slotNo
-  modify' $ \s -> s {mockFails = appendLog slot res (mockFails s)}
+  modify' $ \s -> s {_mockFails = appendLog slot res (_mockFails s)}
 
 -- | Insert event to log
 appendLog :: Slot -> a -> Log a -> Log a
@@ -318,7 +318,7 @@ getUtxosAtState state =
   L.utxosUtxo $
     L.lsUTxOState $
       _memPoolState $
-        emulatedLedgerState state
+        _emulatedLedgerState state
 
 -- | Read all TxOutRefs that belong to given address.
 txOutRefAt :: (Monad m) => C.AddressInEra C.BabbageEra -> ClbT m [P.TxOutRef]
@@ -353,11 +353,11 @@ txOutRefAtPaymentCredState cred st = fmap transTxIn . M.keys $ M.filter withCred
 
 getEpochInfo :: (Monad m) => ClbT m (EpochInfo (Either Text))
 getEpochInfo =
-  gets (slotConfigToEpochInfo . mockConfigSlotConfig . mockConfig)
+  gets (slotConfigToEpochInfo . mockConfigSlotConfig . _mockConfig)
 
 getGlobals :: (Monad m) => ClbT m Globals
 getGlobals = do
-  pparams <- gets (mockConfigProtocol . mockConfig)
+  pparams <- gets (mockConfigProtocol . _mockConfig)
   -- FIXME: fromJust
   let majorVer =
         fromJust $
@@ -377,21 +377,21 @@ getGlobals = do
 -- | Run `applyTx`, if succeed update state and record datums
 sendTx :: (Monad m) => C.Tx C.BabbageEra -> ClbT m ValidationResult
 sendTx apiTx@(C.ShelleyTx _ tx) = do
-  state@ClbState {emulatedLedgerState} <- get
+  state@ClbState {_emulatedLedgerState} <- get
   globals <- getGlobals
-  case applyTx ValidateAll globals emulatedLedgerState tx of
+  case applyTx ValidateAll globals _emulatedLedgerState tx of
     Right (newState, vtx) -> do
-      put $ state {emulatedLedgerState = newState}
+      put $ state {_emulatedLedgerState = newState}
       recordNewDatums
       return $ Success newState vtx
     Left err -> return $ Fail tx err
   where
     recordNewDatums = do
-      state@ClbState {mockDatums} <- get
+      state@ClbState {_mockDatums} <- get
       let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
       put $
         state
-          { mockDatums = M.union mockDatums txDatums
+          { _mockDatums = M.union _mockDatums txDatums
           }
 
 {- | Given a 'C.TxBody from a 'C.Tx era', return the datums and redeemers along
@@ -424,7 +424,7 @@ datumHash (PV2.Datum (PV2.BuiltinData dat)) =
 
 dumpUtxoState :: Clb ()
 dumpUtxoState = do
-  s <- gets ((^. memPoolState) . emulatedLedgerState)
+  s <- gets ((^. memPoolState) . _emulatedLedgerState)
   logInfo $ LogEntry Info $ ppShow s
 
 --------------------------------------------------------------------------------
@@ -444,7 +444,7 @@ checkErrors = do
 
 -- | Return list of failures
 getFails :: Clb (Log FailReason)
-getFails = gets mockFails
+getFails = gets _mockFails
 
 --------------------------------------------------------------------------------
 -- Transactions validation TODO: factor out
@@ -506,5 +506,28 @@ waitSlot slot = do
   -- TODO: shall we throw?
   when (currSlot < slot) $
     modify $
-      \s@ClbState {emulatedLedgerState = state} ->
-        s {emulatedLedgerState = setSlot slot state}
+      \s@ClbState {_emulatedLedgerState = state} ->
+        s {_emulatedLedgerState = setSlot slot state}
+
+-- Lenses
+makeLenses ''ClbState
+
+-- Additional actions
+
+modifySlot :: (Monad m) => (Slot -> Slot) -> ClbT m Slot
+modifySlot f = do
+  logInfo $ LogEntry Info "modify slot..."
+  modify @ClbState
+    ( over
+        emulatedLedgerState
+        (updateSlot (\(SlotNo s) -> fromIntegral (f (fromIntegral s))))
+    )
+  Slot . fromIntegral . unSlotNo <$> getCurrentSlot
+
+processBlock :: (Monad m) => ClbT m Block
+processBlock = do
+  logInfo $ LogEntry Info "modify slot..."
+  pure mempty
+
+addTxToPool :: CardanoTx -> ClbState -> ClbState
+addTxToPool tx = over txPool (tx :)

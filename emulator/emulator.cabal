@@ -5,7 +5,12 @@ build-type:      Simple
 extra-doc-files: README.md
 license:         MIT
 maintainer:      ilia@mlabs.city
-author:          Ilia Rodionov, Gregory Gerasev, George Flerovsky
+author:
+  , Ilia Rodionov
+  , George Flerovsky
+  , Gregory Gerasev
+  , Rajdeep Maity
+
 synopsis:
   The Cardano emulator that just works AKA Cardano Ledger Backend (CLB),
   pronounced /klʌb/.
@@ -49,13 +54,11 @@ library
     Clb
     Clb.ClbLedgerState
     Clb.MockConfig
-    Clb.TimeSlot
-
-  other-modules:
-    Clb.Era
     Clb.Params
+    Clb.TimeSlot
     Clb.Tx
 
+  other-modules:   Clb.Era
   build-depends:
     , base               ^>=4.18.0
     , base16-bytestring
@@ -65,6 +68,7 @@ library
     , lens
     , mtl
     , prettyprinter
+    , serialise
     , text
     , time
     , transformers

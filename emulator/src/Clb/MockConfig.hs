@@ -10,6 +10,7 @@ module Clb.MockConfig (
   skipLimits,
   warnLimits,
   forceLimits,
+  keptBlocks,
 ) where
 
 import Cardano.Api qualified as C
@@ -19,7 +20,9 @@ import Clb.Params (
  )
 import Clb.TimeSlot
 
--- | Config for the blockchain.
+{- | Config for the blockchain.
+TODO: rename to ClbConfig
+-}
 data MockConfig = MockConfig
   { mockConfigCheckLimits :: !CheckLimits
   -- ^ limits check mode
@@ -30,6 +33,7 @@ data MockConfig = MockConfig
   , mockConfigSlotConfig :: !SlotConfig
   -- ^ Slot config
   }
+  deriving stock (Show)
 
 data CheckLimits
   = -- | ignore TX-limits
@@ -76,3 +80,10 @@ warnLimits cfg = cfg {mockConfigCheckLimits = WarnLimits}
 -- | Error on limits
 forceLimits :: MockConfig -> MockConfig
 forceLimits cfg = cfg {mockConfigCheckLimits = ErrorLimits}
+
+-- FIXME: We need TransitionConfig to implement this
+keptBlocks :: MockConfig -> Integer
+keptBlocks = const 42
+
+-- keptBlocks MockConfig{mockConfigProtocol} =
+--   fromIntegral $ sgSecurityParam (_ ^. tcShelleyGenesisL)

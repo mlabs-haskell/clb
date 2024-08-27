@@ -5,6 +5,9 @@ module Clb.TimeSlot (
   posixTimeToUTCTime,
   nominalDiffTimeToPOSIXTime,
   posixTimeToNominalDiffTime,
+  Slot (..),
+  slotToBeginPOSIXTime,
+  currentSlot,
 ) where
 
 import PlutusTx.Prelude hiding (Eq, (<$>))
@@ -71,3 +74,40 @@ posixTimeToNominalDiffTime =
     . (Haskell./ 1000)
     . Haskell.fromInteger
     . getPOSIXTime
+
+newtype Slot = Slot {getSlot :: Integer}
+  deriving stock (Eq, Haskell.Ord, Show, Generic)
+  deriving newtype
+    ( AdditiveSemigroup
+    , AdditiveMonoid
+    , AdditiveGroup
+    )
+  deriving newtype (Haskell.Num, Haskell.Enum, Haskell.Real, Haskell.Integral)
+
+instance Pretty Slot where
+  pretty (Slot i) = "Slot" <+> pretty i
+
+{-# INLINEABLE slotToBeginPOSIXTime #-}
+
+-- | Get the starting 'POSIXTime' of a 'Slot' given a 'SlotConfig'.
+slotToBeginPOSIXTime :: SlotConfig -> Slot -> POSIXTime
+slotToBeginPOSIXTime SlotConfig {scSlotLength, scSlotZeroTime} (Slot n) =
+  let msAfterBegin = n * scSlotLength
+   in POSIXTime $ getPOSIXTime scSlotZeroTime + msAfterBegin
+
+-- | Get the current slot number
+currentSlot :: SlotConfig -> Haskell.IO Slot
+currentSlot sc = timeToSlot Haskell.<$> Time.getPOSIXTime
+  where
+    timeToSlot =
+      posixTimeToEnclosingSlot sc
+        . nominalDiffTimeToPOSIXTime
+
+{-# INLINEABLE posixTimeToEnclosingSlot #-}
+
+-- | Convert a 'POSIXTime' to 'Slot' given a 'SlotConfig'.
+posixTimeToEnclosingSlot :: SlotConfig -> POSIXTime -> Slot
+posixTimeToEnclosingSlot SlotConfig {scSlotLength, scSlotZeroTime} (POSIXTime t) =
+  let timePassed = t - getPOSIXTime scSlotZeroTime
+      slotsPassed = divide timePassed scSlotLength
+   in Slot slotsPassed

@@ -2,7 +2,7 @@ module Main where
 
 import Cardano.Api (Lovelace (Lovelace), lovelaceToValue)
 import Clb (
-  ClbState (mockInfo),
+  ClbState (_mockInfo),
   checkErrors,
   defaultBabbage,
   dumpUtxoState,
@@ -21,7 +21,7 @@ main = do
   let (_mbErrors, clb) =
         runClb (dumpUtxoState >> checkErrors) $
           initClb defaultBabbage _dummyTotalNotUsedNow perWallet
-  let logDoc = ppLog $ mockInfo clb
+  let logDoc = ppLog $ _mockInfo clb
   let options = defaultLayoutOptions {layoutPageWidth = AvailablePerLine 150 1.0}
   let logString = renderString $ layoutPretty options logDoc
   let mockLog = "\nEmulator log :\n--------------\n" <> logString
