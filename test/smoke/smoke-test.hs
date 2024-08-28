@@ -10,7 +10,6 @@ import Clb (
   ppLog,
   runClb,
  )
-import ClbSocket.Test qualified as ClbSocket
 import Prettyprinter
 import Prettyprinter.Render.String (renderString)
 
@@ -27,16 +26,3 @@ main = do
   let logString = renderString $ layoutPretty options logDoc
   let mockLog = "\nEmulator log :\n--------------\n" <> logString
   putStrLn mockLog
-  ClbSocket.runTest
-
--- test :: ClbState
--- test = do
---   let perWallet = lovelaceToValue $ Lovelace 1_000_000_000
---   let initPool = lovelaceToValue $ Lovelace 1_000_000_000_000
---   snd $ runClb testActions $ initClb defaultBabbage initPool perWallet
-
--- testActions :: ClbT Identity SlotNo
--- testActions = do
---   slot <- getCurrentSlot
---   let nextS = succ slot
---   pure nextS

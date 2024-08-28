@@ -43,26 +43,9 @@ common common-lang
   if flag(force-recomp)
     ghc-options: -fforce-recomp -Wunused-packages
 
-library
-  import:          common-lang
-  exposed-modules:
-    Clb
-    Clb.ClbLedgerState
-    Clb.MockConfig
-    Clb.TimeSlot
+  default-language: GHC2021
 
-    ClbSocket.Test
-
-  other-modules:
-    Clb.Era
-    Clb.Params
-    Clb.Tx
-
-    ClbSocket.Server
-    ClbSocket.Parse
-    ClbSocket.Serialise
-    ClbSocket.Serialise.Tx
-
+common general-libs
   build-depends:
     , base               ^>=4.18.0
     , base16-bytestring
@@ -77,9 +60,11 @@ library
     , transformers
     , network
     , aeson
+    , aeson-pretty
     , directory
     , filepath
 
+common cardano-libs
   build-depends:
     , cardano-api:{cardano-api, internal}                 >=8.38.0.0
     , cardano-binary
@@ -101,6 +86,28 @@ library
     , cardano-ledger-conway
     , cardano-ledger-byron
 
+library
+  import:          common-lang, cardano-libs, general-libs
+  exposed-modules:
+    Clb
+    Clb.ClbLedgerState
+    Clb.MockConfig
+    Clb.TimeSlot
+
+    ClbSocket
+
+  other-modules:
+    Clb.Era
+    Clb.Params
+    Clb.Tx
+
+    ClbSocket.Types
+    ClbSocket.Core
+    ClbSocket.Server
+    ClbSocket.Parse
+    ClbSocket.Serialise
+    ClbSocket.Serialise.Tx
+
   hs-source-dirs:  src
 
 executable smoke-test
@@ -115,4 +122,14 @@ executable smoke-test
 
   hs-source-dirs:   test/smoke
   other-modules:
-  default-language: GHC2021
+
+test-suite clb-test
+  import:           common-lang, cardano-libs, general-libs
+  main-is:          Main.hs
+  build-depends:
+    , base
+    , cardano-api:{cardano-api, internal}
+    , clb
+    , prettyprinter
+  hs-source-dirs:   test/
+  other-modules:    ClbSocketTest.Parse

@@ -1,7 +1,8 @@
 module ClbSocket.Server (runServer) where
 
-import ClbSocket.Parse (Request, parseData)
+import ClbSocket.Parse (parseRequest)
 import ClbSocket.Serialise (Response, serializeData)
+import ClbSocket.Types (Request)
 import Control.Monad (forever)
 import Network.Socket (
   Family (AF_UNIX),
@@ -43,11 +44,11 @@ handleConnection :: Socket -> IO ()
 handleConnection conn = do
   -- Receive data from the client
   msg <- NBL.recv conn 1024 -- Adjust buffer size as needed
-  case parseData msg of -- Parse the received data (JSON to Haskell data type)
-    Just parsedData -> do
+  case parseRequest msg of -- Parse the received data (JSON to Haskell data type)
+    Right parsedData -> do
       let response = processRequest parsedData -- Process the request
       NBL.sendAll conn (serializeData response) -- Serialize and send the response (Haskell data type to JSON)
-    Nothing -> putStrLn "Failed to parse data"
+    Left e -> putStrLn e
   where
     processRequest :: Request -> Response Int
     processRequest = undefined

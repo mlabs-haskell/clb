@@ -1,0 +1,10 @@
+{
+    "jsonrpc": "2.0",
+    "method": "submitTransaction",
+    "params": {
+        "transaction": {
+            "cbor": "84a3008001800200a0f5f6"
+        }
+    },
+    "reqId": null
+}
