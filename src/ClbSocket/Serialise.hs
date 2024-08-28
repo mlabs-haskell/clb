@@ -12,11 +12,11 @@ import Data.ByteString.Lazy qualified as BSL
 import PlutusPrelude (Generic)
 
 -- | Data Serialization Functions
-newtype Response a = Response a deriving (Generic)
+data Response = Response deriving (Generic)
 
-instance (ToJSON a) => ToJSON (Response a)
+instance ToJSON Response
 
-serializeData :: (ToJSON a) => Response a -> BSL.ByteString
+serializeData :: Response -> BSL.ByteString
 serializeData = encode
 
 serializeBabbageEraTx :: C.Tx C.BabbageEra -> BSL.ByteString

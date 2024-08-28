@@ -1,8 +1,9 @@
-module ClbSocket.Server (runServer) where
+module ClbSocket.Server (runServer, ServerConfig (..)) where
 
 import ClbSocket.Parse (parseRequest)
 import ClbSocket.Serialise (Response, serializeData)
 import ClbSocket.Types (Request)
+import Control.Concurrent (MVar)
 import Control.Monad (forever)
 import Network.Socket (
   Family (AF_UNIX),
@@ -17,11 +18,17 @@ import Network.Socket (
   listen,
   socket,
  )
-import qualified Network.Socket.ByteString.Lazy as NBL
+import Network.Socket.ByteString.Lazy qualified as NBL
+
+data ServerConfig = ServerConfig
+  { socketPath :: FilePath
+  , requestVar :: MVar Request
+  , responseVar :: MVar Response
+  }
 
 -- TODO: Concurrency, Error Handling, Logging
-runServer :: FilePath -> IO ()
-runServer socketPath = do
+runServer :: ServerConfig -> IO ()
+runServer (ServerConfig {..}) = do
   -- Create a UNIX domain socket
   sock <- socket AF_UNIX Stream defaultProtocol
 
@@ -50,5 +57,5 @@ handleConnection conn = do
       NBL.sendAll conn (serializeData response) -- Serialize and send the response (Haskell data type to JSON)
     Left e -> putStrLn e
   where
-    processRequest :: Request -> Response Int
+    processRequest :: Request -> Response
     processRequest = undefined
