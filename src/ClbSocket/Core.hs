@@ -3,10 +3,11 @@ module ClbSocket.Core where
 import Cardano.Api (Value)
 import Clb (ClbState, ClbT (unwrapClbT), MockConfig, initClb, sendTx)
 import ClbSocket (getEmulatorBabbageEraTx)
+import ClbSocket.Serialise (Response (SendTxResponse))
 import ClbSocket.Server (ServerConfig (..))
 import ClbSocket.Types (Request (SendTx))
-import Control.Concurrent (takeMVar)
-import Control.Monad (void)
+import Control.Concurrent (putMVar, takeMVar)
+import Control.Monad (forever)
 import Control.Monad.State (MonadIO, StateT (runStateT), liftIO)
 
 data EmulatorConfig = EmulatorConfig
@@ -22,8 +23,9 @@ runEmulator (EmulatorConfig {..}) serverConfig = do
   return finalClbState
 
 emulatorT :: (Monad m, MonadIO m) => ServerConfig -> ClbT m ()
-emulatorT (ServerConfig {..}) = do
+emulatorT (ServerConfig {..}) = forever $ do
   request <- liftIO $ takeMVar requestVar
-  case request of
-    SendTx tx -> void (sendTx $ getEmulatorBabbageEraTx tx) -- TODO : Handle output (ValidationResult)
+  response <- case request of
+    SendTx tx -> SendTxResponse <$> sendTx (getEmulatorBabbageEraTx tx)
     _ -> error "undefined"
+  liftIO $ putMVar responseVar response

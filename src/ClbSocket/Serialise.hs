@@ -1,24 +1,18 @@
 module ClbSocket.Serialise (
-  serializeData,
-  serializeBabbageEraTx,
+  serializeResponse,
   Response (..),
 ) where
 
-import Cardano.Api (serialiseToCBOR)
-import Cardano.Api.Shelley qualified as C
-import ClbSocket.Types (CBOR (CBOR), Transaction (Transaction))
-import Data.Aeson (ToJSON, encode)
+import Cardano.Binary (serialize)
+import Cardano.Ledger.Shelley.API.Mempool (extractTx)
+import Clb (ValidationResult (Fail, Success))
+import Clb.Tx (OnChainTx (OnChainTx))
 import Data.ByteString.Lazy qualified as BSL
 import PlutusPrelude (Generic)
 
 -- | Data Serialization Functions
-data Response = Response deriving (Generic)
+newtype Response = SendTxResponse ValidationResult deriving (Generic)
 
-instance ToJSON Response
-
-serializeData :: Response -> BSL.ByteString
-serializeData = encode
-
-serializeBabbageEraTx :: C.Tx C.BabbageEra -> BSL.ByteString
--- serializeBabbageEraTx tx = encode $ CardanoTx tx C.ShelleyBasedEraBabbage
-serializeBabbageEraTx = encode . Transaction . CBOR . serialiseToCBOR @(C.Tx C.BabbageEra)
+serializeResponse :: Response -> BSL.ByteString
+serializeResponse (SendTxResponse (Fail _ validationError)) = serialize validationError
+serializeResponse (SendTxResponse (Success _ (OnChainTx validatedTx))) = serialize $ extractTx validatedTx
