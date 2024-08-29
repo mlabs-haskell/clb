@@ -3,6 +3,7 @@
 dist-newstyle/
 # Local configuration files
 cabal.project.local*
+Config/
 
 # nix-build results
 result
@@ -27,3 +28,6 @@ TODO.md
 
 # Assets
 test/Assets/
+
+# Sockets
+clb-emulator-socket/

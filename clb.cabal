@@ -107,6 +107,7 @@ library
     ClbSocket.Parse
     ClbSocket.Serialise
     ClbSocket.Serialise.Tx
+    ClbSocket.Utilities.ParseConfig
 
   hs-source-dirs:  src
 
@@ -124,12 +125,11 @@ executable smoke-test
   other-modules:
 
 executable emulator
-  import:           common-lang
+  import:           common-lang, general-libs
   main-is:          Main.hs
   build-depends:
     , base
     , clb
-    , prettyprinter
 
   hs-source-dirs:   app/
 

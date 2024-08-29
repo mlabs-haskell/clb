@@ -1,9 +1,12 @@
 module Main where
 
 import Clb (ClbState, mockInfo, ppLog)
-import ClbSocket (EmulatorConfig, ServerConfig, runEmulator, runServer)
+import ClbSocket (ServerConfig (ServerConfig), getEmulatorConfig, runEmulator, runServer)
+import Control.Concurrent.MVar (newEmptyMVar)
 import Prettyprinter (LayoutOptions (layoutPageWidth), PageWidth (AvailablePerLine), defaultLayoutOptions, layoutPretty)
 import Prettyprinter.Render.String (renderString)
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath ((</>))
 
 main :: IO ()
 main = do
@@ -24,7 +27,16 @@ printLog clbState = do
   putStrLn logString
 
 getServerConfig :: IO ServerConfig
-getServerConfig = undefined
+getServerConfig =
+  ServerConfig
+    <$> createSocketPath "." "clb-emulator-control.socket"
+    <*> createSocketPath "." "clb-emulator-comm.socket"
+    <*> newEmptyMVar
+    <*> newEmptyMVar
 
-getEmulatorConfig :: IO EmulatorConfig
-getEmulatorConfig = undefined
+createSocketPath :: FilePath -> String -> IO FilePath
+createSocketPath baseDir socketName = do
+  let fullDir = baseDir </> "clb-emulator-socket"
+  createDirectoryIfMissing True fullDir
+  let socketPath = fullDir </> socketName
+  return socketPath

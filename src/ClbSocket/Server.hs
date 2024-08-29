@@ -4,6 +4,7 @@ import ClbSocket.Parse (parseRequest)
 import ClbSocket.Serialise (Response, serializeResponse)
 import ClbSocket.Types (Request)
 import Control.Concurrent (MVar, putMVar, takeMVar)
+import Control.Exception (IOException, catch)
 import Control.Monad (forever)
 import Data.ByteString.Lazy qualified as BSL
 import Network.Socket (
@@ -22,29 +23,24 @@ import Network.Socket (
 import Network.Socket.ByteString.Lazy qualified as NBL
 
 data ServerConfig = ServerConfig
-  { socketPath :: FilePath
+  { commSocketPath :: FilePath
+  , controlSocketPath :: FilePath
   , requestVar :: MVar Request
   , responseVar :: MVar Response
   }
 
 -- TODO: Concurrency, Error Handling, Logging
+-- TODO: implement Control Socket
 runServer :: ServerConfig -> IO ()
 runServer (ServerConfig {..}) = do
-  -- Create a UNIX domain socket
-  sock <- socket AF_UNIX Stream defaultProtocol
-
-  -- Bind the socket to a file path
-  let sockAddr = SockAddrUnix socketPath
-  if isSupportedSockAddr sockAddr
-    then bind sock sockAddr
-    else error "Unsupported Socket Address!"
-
-  -- Start listening for connections
-  listen sock 5
+  commSocket <-
+    setupSocket commSocketPath >>= \case
+      Right sock -> pure sock
+      Left e -> error e
 
   -- Accept connections and handle them
   forever $ do
-    (conn, _) <- accept sock
+    (conn, _) <- accept commSocket
     handleRequest conn requestVar
     handleResponse conn responseVar
     close conn
@@ -64,7 +60,7 @@ handleResponse conn responseVar = do
 
 -- Helper Functions
 
--- Function to receive a full message, handling cases where the message exceeds the buffer size
+-- | Function to receive a full message, handling cases where the message exceeds the buffer size
 recvFull :: Socket -> IO BSL.ByteString
 recvFull conn = loop BSL.empty
   where
@@ -73,3 +69,19 @@ recvFull conn = loop BSL.empty
       if BSL.null chunk
         then return acc -- No more data to read
         else loop (acc <> chunk)
+
+-- | Sets up a UNIX domain socket at the given file path, returning either an error message or the socket.
+setupSocket :: FilePath -> IO (Either String Socket)
+setupSocket socketPath = do
+  sock <- socket AF_UNIX Stream defaultProtocol
+  let sockAddr = SockAddrUnix socketPath
+  if isSupportedSockAddr sockAddr
+    then
+      catch
+        ( do
+            bind sock sockAddr
+            listen sock 5
+            return $ Right sock
+        )
+        (\e -> return $ Left $ "Failed to bind socket: " <> show @IOException e)
+    else return $ Left $ "Unsupported Socket Address: " <> socketPath
