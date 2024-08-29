@@ -1,9 +1,12 @@
-module ClbSocket.Core where
+module ClbSocket.Core (
+  EmulatorConfig (..),
+  runEmulator,
+) where
 
 import Cardano.Api (Value)
 import Clb (ClbState, ClbT (unwrapClbT), MockConfig, initClb, sendTx)
-import ClbSocket (getEmulatorBabbageEraTx)
 import ClbSocket.Serialise (Response (SendTxResponse))
+import ClbSocket.Serialise.Tx (getEmulatorBabbageEraTx)
 import ClbSocket.Server (ServerConfig (..))
 import ClbSocket.Types (Request (SendTx))
 import Control.Concurrent (putMVar, takeMVar)

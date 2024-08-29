@@ -123,6 +123,16 @@ executable smoke-test
   hs-source-dirs:   test/smoke
   other-modules:
 
+executable emulator
+  import:           common-lang
+  main-is:          Main.hs
+  build-depends:
+    , base
+    , clb
+    , prettyprinter
+
+  hs-source-dirs:   app/
+
 test-suite clb-test
   import:           common-lang, cardano-libs, general-libs
   main-is:          Main.hs
