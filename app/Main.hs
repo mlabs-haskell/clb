@@ -33,6 +33,7 @@ getServerConfig =
     <*> createSocketPath "." "clb-emulator-comm.socket"
     <*> newEmptyMVar
     <*> newEmptyMVar
+    <*> newEmptyMVar
 
 createSocketPath :: FilePath -> String -> IO FilePath
 createSocketPath baseDir socketName = do
