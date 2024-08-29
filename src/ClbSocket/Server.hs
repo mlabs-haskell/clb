@@ -2,10 +2,11 @@ module ClbSocket.Server (runServer, ServerConfig (..)) where
 
 import ClbSocket.Parse (parseRequest)
 import ClbSocket.Serialise (Response, serializeResponse)
-import ClbSocket.Types (Request)
-import Control.Concurrent (MVar, putMVar, takeMVar)
-import Control.Exception (IOException, catch)
+import ClbSocket.Types (EmulatorControl, Request)
+import Control.Concurrent (MVar, forkIO, putMVar, takeMVar, threadDelay)
+import Control.Exception (IOException, catch, finally)
 import Control.Monad (forever)
+import Data.Aeson (decode)
 import Data.ByteString.Lazy qualified as BSL
 import Network.Socket (
   Family (AF_UNIX),
@@ -27,27 +28,45 @@ data ServerConfig = ServerConfig
   , controlSocketPath :: FilePath
   , requestVar :: MVar Request
   , responseVar :: MVar Response
+  , controlVar :: MVar EmulatorControl
   }
 
--- TODO: Concurrency, Error Handling, Logging
--- TODO: implement Control Socket
+-- TODO: Graceful Shutdown, Error Handling, Logging
 runServer :: ServerConfig -> IO ()
 runServer (ServerConfig {..}) = do
+  -- Set up communication socket
   commSocket <-
     setupSocket commSocketPath >>= \case
       Right sock -> pure sock
-      Left e -> error e
+      Left e -> putStrLn "Failed to setup commSocket!" >> error e
 
-  -- Accept connections and handle them
-  forever $ do
+  -- Set up control socket
+  controlSocket <-
+    setupSocket controlSocketPath >>= \case
+      Right sock -> pure sock
+      Left e -> putStrLn "Failed to setup controlSocket!" >> error e
+
+  -- Fork a thread to handle communication socket
+  _ <- forkIO $ forever $ do
     (conn, _) <- accept commSocket
-    handleRequest conn requestVar
-    handleResponse conn responseVar
-    close conn
+    handleCommConnection conn `finally` close conn
+
+  -- Fork a thread to handle control socket
+  _ <- forkIO $ forever $ do
+    (conn, _) <- accept controlSocket
+    handleControlConnection conn `finally` close conn
+
+  -- Keep the main thread alive
+  forever $ threadDelay maxBound
+  where
+    handleCommConnection conn = do
+      handleRequest conn requestVar
+      handleResponse conn responseVar
+
+    handleControlConnection conn = handleEmulatorControl conn controlVar
 
 handleRequest :: Socket -> MVar Request -> IO ()
 handleRequest conn requestVar = do
-  -- Receive data from the client
   msg <- recvFull conn
   case parseRequest msg of -- Parse the received data (JSON to Haskell data type)
     Right request -> putMVar requestVar request
@@ -57,6 +76,13 @@ handleResponse :: Socket -> MVar Response -> IO ()
 handleResponse conn responseVar = do
   response <- takeMVar responseVar
   NBL.sendAll conn (serializeResponse response) -- Serialize and send the response (Haskell data type to CBOR)
+
+handleEmulatorControl :: Socket -> MVar EmulatorControl -> IO ()
+handleEmulatorControl conn controlVar = do
+  msg <- recvFull conn
+  case decode msg of -- Parse the received data (JSON to Haskell data type)
+    Just control -> putMVar controlVar control
+    Nothing -> putStrLn "Failed to decode emulator control msg!"
 
 -- Helper Functions
 

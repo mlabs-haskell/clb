@@ -4,6 +4,7 @@ module ClbSocket.Types (
   Request (..),
   CBOR (..),
   Transaction (..),
+  EmulatorControl (..),
 ) where
 
 import Cardano.Api.Shelley qualified as C
@@ -52,3 +53,13 @@ instance FromJSON BS.ByteString where
           Right bs -> pure bs
           Left e -> fail e
   parseJSON _ = fail "Expected a JSON string for ByteString"
+
+data EmulatorControl
+  = StartEmulator
+      { totalValueInfo :: Value
+      , walletFundsInfo :: Value
+      }
+  | ShutdownEmulator
+  deriving stock (Generic)
+
+instance FromJSON EmulatorControl
