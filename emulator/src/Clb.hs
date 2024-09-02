@@ -91,12 +91,13 @@ import Cardano.Ledger.Shelley.Core (EraRule)
 import Cardano.Ledger.Slot (SlotNo (..))
 import Cardano.Ledger.TxIn qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo)
-import Clb.ClbLedgerState (CardanoTx, EmulatedLedgerState (..), TxPool, currentBlock, initialState, memPoolState, setSlot, setUtxo, updateSlot)
+import Clb.ClbLedgerState (CardanoTx, EmulatedLedgerState (..), TxPool, currentBlock, initialState, memPoolState, setSlot, setUtxo)
 import Clb.Era (EmulatorEra)
 import Clb.MockConfig (MockConfig (..))
 import Clb.MockConfig qualified as X (defaultBabbage)
 import Clb.Params (PParams, genesisDefaultsFromParams)
 import Clb.TimeSlot (Slot (..), SlotConfig (..), slotConfigToEpochInfo)
+import Clb.TimeSlot qualified as TimeSlot
 import Clb.Tx (Block, OnChainTx (..))
 import Control.Arrow (ArrowChoice (..))
 import Control.Lens (makeLenses, over, (&), (.~), (^.))
@@ -516,18 +517,18 @@ makeLenses ''ClbState
 
 modifySlot :: (Monad m) => (Slot -> Slot) -> ClbT m Slot
 modifySlot f = do
-  logInfo $ LogEntry Info "modify slot..."
-  modify @ClbState
-    ( over
-        emulatedLedgerState
-        (updateSlot (\(SlotNo s) -> fromIntegral (f (fromIntegral s))))
-    )
-  Slot . fromIntegral . unSlotNo <$> getCurrentSlot
+  newSlotNo <- fromSlot . f . toSlot <$> getCurrentSlot
+  modify (over emulatedLedgerState (setSlot newSlotNo))
+  toSlot <$> getCurrentSlot
 
-processBlock :: (Monad m) => ClbT m Block
-processBlock = do
-  logInfo $ LogEntry Info "modify slot..."
-  pure mempty
+toSlot :: SlotNo -> Slot
+toSlot = Slot . fromIntegral . L.unSlotNo
+
+fromSlot :: Slot -> SlotNo
+fromSlot = fromIntegral . TimeSlot.getSlot
+
+processBlock :: ClbT m Block
+processBlock = undefined
 
 addTxToPool :: CardanoTx -> ClbState -> ClbState
 addTxToPool tx = over txPool (tx :)
