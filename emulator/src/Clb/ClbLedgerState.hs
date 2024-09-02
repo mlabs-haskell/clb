@@ -3,13 +3,10 @@
 
 module Clb.ClbLedgerState where
 
+import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Api qualified as L
 import Cardano.Ledger.Shelley.API qualified as L
 import Cardano.Ledger.Shelley.LedgerState qualified as L
-
--- import Cardano.Ledger.Slot (SlotNo)
-
-import Cardano.Api.Shelley qualified as C
 import Cardano.Slotting.Slot (SlotNo (SlotNo))
 import Clb.Era (EmulatorEra)
 import Clb.Params (PParams)

@@ -91,7 +91,7 @@ import Cardano.Ledger.Shelley.Core (EraRule)
 import Cardano.Ledger.Slot (SlotNo (..))
 import Cardano.Ledger.TxIn qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo)
-import Clb.ClbLedgerState (CardanoTx, EmulatedLedgerState (..), TxPool, currentBlock, initialState, memPoolState, setSlot, setUtxo)
+import Clb.ClbLedgerState (CardanoTx, EmulatedLedgerState (..), TxPool, currentBlock, getEmulatorEraTx, initialState, memPoolState, setSlot, setUtxo)
 import Clb.Era (EmulatorEra)
 import Clb.MockConfig (MockConfig (..))
 import Clb.MockConfig qualified as X (defaultBabbage)
@@ -119,7 +119,7 @@ import Data.Foldable (toList)
 import Data.Function (on)
 import Data.List
 import Data.Map qualified as M
-import Data.Maybe (fromJust)
+import Data.Maybe (catMaybes, fromJust)
 import Data.Sequence (Seq (..))
 import Data.Sequence qualified as Seq
 import Data.Text (Text)
@@ -517,9 +517,9 @@ makeLenses ''ClbState
 
 modifySlot :: (Monad m) => (Slot -> Slot) -> ClbT m Slot
 modifySlot f = do
-  newSlotNo <- fromSlot . f . toSlot <$> getCurrentSlot
-  modify (over emulatedLedgerState (setSlot newSlotNo))
-  toSlot <$> getCurrentSlot
+  newSlot <- f . toSlot <$> getCurrentSlot
+  modify (over emulatedLedgerState (setSlot $ fromSlot newSlot))
+  return newSlot
 
 toSlot :: SlotNo -> Slot
 toSlot = Slot . fromIntegral . L.unSlotNo
@@ -527,8 +527,39 @@ toSlot = Slot . fromIntegral . L.unSlotNo
 fromSlot :: Slot -> SlotNo
 fromSlot = fromIntegral . TimeSlot.getSlot
 
-processBlock :: ClbT m Block
-processBlock = undefined
+{- | Evaluates all Txs in the pool
+Add them to chain if Successful, otherwise just dump them.
+Thus creating new Block
+Then updates currentBlock @EmulatedLedgerState to latest Block
+-}
+processBlock :: (Monad m) => ClbT m Block
+processBlock = do
+  poolTxs <- gets _txPool
+  newBlock <- catMaybes <$> mapM (processSingleTx . getEmulatorEraTx) poolTxs
+  modify (over txPool (const mempty)) -- Clears txPool
+  modify (over emulatedLedgerState (over currentBlock (const newBlock))) -- Update to latest Block
+  return newBlock
+
+processSingleTx :: (Monad m) => C.Tx C.BabbageEra -> ClbT m (Maybe OnChainTx)
+processSingleTx tx = validateTx tx >>= commitTx
+
+validateTx :: (Monad m) => C.Tx C.BabbageEra -> ClbT m ValidationResult
+validateTx (C.ShelleyTx _ tx) = do
+  ClbState {_emulatedLedgerState} <- get
+  globals <- getGlobals
+  case applyTx ValidateAll globals _emulatedLedgerState tx of
+    Right (newState, vtx) -> return $ Success newState vtx
+    Left err -> return $ Fail tx err
+
+commitTx :: (Monad m) => ValidationResult -> ClbT m (Maybe OnChainTx)
+commitTx (Success newState vtx) = do
+  state@ClbState {_mockDatums} <- get
+  let apiTx = C.ShelleyTx C.ShelleyBasedEraBabbage (L.extractTx $ getOnChainTx vtx)
+  let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
+  put $ state {_emulatedLedgerState = newState, _mockDatums = M.union _mockDatums txDatums}
+  pure $ Just vtx
+-- TODO: Should we log ValidationError in Fail !(Core.Tx EmulatorEra) !ValidationError ?
+commitTx (Fail _ _) = pure Nothing
 
 addTxToPool :: CardanoTx -> ClbState -> ClbState
 addTxToPool tx = over txPool (tx :)
