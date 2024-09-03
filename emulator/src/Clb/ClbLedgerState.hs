@@ -64,7 +64,7 @@ nextSlot = over ledgerEnv f
 setSlot :: SlotNo -> EmulatedLedgerState -> EmulatedLedgerState
 setSlot sl = over ledgerEnv (\l -> l {L.ledgerSlotNo = sl})
 
--- | Set the slot number
+-- | Update the slot number
 updateSlot :: (SlotNo -> SlotNo) -> EmulatedLedgerState -> EmulatedLedgerState
 updateSlot f = over ledgerEnv (\l -> l {L.ledgerSlotNo = f (L.ledgerSlotNo l)})
 

@@ -517,6 +517,7 @@ makeLenses ''ClbState
 
 modifySlot :: (Monad m) => (Slot -> Slot) -> ClbT m Slot
 modifySlot f = do
+  logInfo $ LogEntry Info "modify slot..."
   newSlot <- f . toSlot <$> getCurrentSlot
   modify (over emulatedLedgerState (setSlot $ fromSlot newSlot))
   return newSlot
@@ -534,6 +535,7 @@ Then updates currentBlock @EmulatedLedgerState to latest Block
 -}
 processBlock :: (Monad m) => ClbT m Block
 processBlock = do
+  logInfo $ LogEntry Info "process block..."
   poolTxs <- gets _txPool
   newBlock <- catMaybes <$> mapM (processSingleTx . getEmulatorEraTx) poolTxs
   modify (over txPool (const mempty)) -- Clears txPool
