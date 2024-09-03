@@ -14,8 +14,11 @@ module Clb.MockConfig (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Shelley qualified as L
+import Cardano.Ledger.Shelley.Transition qualified as L
 import Clb.Params (
   PParams,
+  TransitionConfig,
   defaultBabbageParams,
  )
 import Clb.TimeSlot
@@ -32,6 +35,8 @@ data MockConfig = MockConfig
   -- ^ Network id (mainnet / testnet)
   , mockConfigSlotConfig :: !SlotConfig
   -- ^ Slot config
+  , mockConfigConfig :: !TransitionConfig
+  -- ^ Transition configuration : needed to be able to start in a current era
   }
   deriving stock (Show)
 
@@ -59,6 +64,9 @@ defaultSlotConfig =
 defaultBabbage :: MockConfig
 defaultBabbage = defaultMockConfig defaultBabbageParams
 
+defaultTransitionConfig :: TransitionConfig
+defaultTransitionConfig = L.mkShelleyTransitionConfig L.shelleyGenesisDefaults
+
 -- | Default blockchain config.
 defaultMockConfig :: PParams -> MockConfig
 defaultMockConfig params =
@@ -67,6 +75,7 @@ defaultMockConfig params =
     , mockConfigProtocol = params
     , mockConfigNetworkId = C.Testnet $ C.NetworkMagic 42
     , mockConfigSlotConfig = defaultSlotConfig
+    , mockConfigConfig = defaultTransitionConfig
     }
 
 -- | Do not check for limits

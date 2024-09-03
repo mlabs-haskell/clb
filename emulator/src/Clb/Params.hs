@@ -7,11 +7,13 @@ import Cardano.Ledger.Alonzo.PParams qualified as Alonzo
 import Cardano.Ledger.Alonzo.Scripts qualified as Alonzo
 import Cardano.Ledger.Babbage qualified as L (BabbageEra)
 import Cardano.Ledger.Babbage.PParams qualified as Babbage
+import Cardano.Ledger.Babbage.Transition qualified as L
 import Cardano.Ledger.BaseTypes qualified as L
 import Cardano.Ledger.Coin qualified as L
 import Cardano.Ledger.Core qualified as L
 import Cardano.Ledger.Crypto qualified as L (StandardCrypto)
 import Cardano.Ledger.Plutus.Language qualified as Plutus
+import Cardano.Ledger.Shelley qualified as L
 import Cardano.Ledger.Shelley.Genesis qualified as L (ShelleyGenesis)
 import Data.Coerce (coerce)
 import Data.Either (fromRight)
@@ -106,3 +108,10 @@ genesisDefaultsFromParams = C.shelleyGenesisDefaults -- FIXME:
 -- | A sensible default 'EpochSize' value for the emulator
 emulatorEpochSize :: L.EpochSize
 emulatorEpochSize = L.EpochSize 432000
+
+-- Transition Config
+
+-- | The default era for the emulator
+type EmulatorEra = L.ShelleyEra L.StandardCrypto
+
+type TransitionConfig = L.TransitionConfig EmulatorEra
