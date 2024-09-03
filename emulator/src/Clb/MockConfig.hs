@@ -22,6 +22,7 @@ import Clb.Params (
   defaultBabbageParams,
  )
 import Clb.TimeSlot
+import Control.Lens.Getter ((^.))
 
 {- | Config for the blockchain.
 TODO: rename to ClbConfig
@@ -90,9 +91,5 @@ warnLimits cfg = cfg {mockConfigCheckLimits = WarnLimits}
 forceLimits :: MockConfig -> MockConfig
 forceLimits cfg = cfg {mockConfigCheckLimits = ErrorLimits}
 
--- FIXME: We need TransitionConfig to implement this
 keptBlocks :: MockConfig -> Integer
-keptBlocks = const 42
-
--- keptBlocks MockConfig{mockConfigProtocol} =
---   fromIntegral $ sgSecurityParam (_ ^. tcShelleyGenesisL)
+keptBlocks MockConfig {mockConfigConfig} = fromIntegral $ L.sgSecurityParam (mockConfigConfig ^. L.tcShelleyGenesisL)
