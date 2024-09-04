@@ -20,6 +20,7 @@ import Data.Either (fromRight)
 import Data.Functor.Identity (Identity)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromJust)
+import Test.Cardano.Ledger.Plutus qualified as LT (testingCostModelV3)
 
 type PParams era = L.PParams (CardanoLedgerEra era)
 
@@ -136,6 +137,7 @@ defaultConwayParams =
             , ucppDRepActivity               = L.EpochInterval 20
             , ucppCommitteeMinSize           = 0
             , ucppCommitteeMaxTermLength     = L.EpochInterval 73
+            , ucppPlutusV3CostModel          = LT.testingCostModelV3  -- FIXME: This is temporary.
             } defaultBabbageParams
    in coerce $
         old
