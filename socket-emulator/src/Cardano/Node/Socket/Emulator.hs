@@ -53,14 +53,7 @@ core
     }
   updateShelley =
     LM.runLogEffects trace $ do
-      -- make initial distribution of 1 billion Ada to all configured wallets
-      -- let getAddress n = knownAddresses !! (fromIntegral n - 1)
-      --     dist =
-      --       Map.fromList $
-      --         zip (getAddress <$> nscInitialTxWallets) (repeat (CardanoAPI.adaValueOf 1_000_000_000))
-      -- params <- liftIO $ Params.fromNodeServerConfig updateShelley nodeServerConfig
-      -- FIXME: defaultBabbage
-      let params = defaultBabbage
+      params <- liftIO $ Params.fromNodeServerConfig updateShelley nodeServerConfig
       initialState <- initialChainState params
       let appState = AppState initialState mempty params
       serverHandler <-

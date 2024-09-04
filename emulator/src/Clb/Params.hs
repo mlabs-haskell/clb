@@ -13,7 +13,6 @@ import Cardano.Ledger.Coin qualified as L
 import Cardano.Ledger.Core qualified as L
 import Cardano.Ledger.Crypto qualified as L (StandardCrypto)
 import Cardano.Ledger.Plutus.Language qualified as Plutus
-import Cardano.Ledger.Shelley qualified as L
 import Cardano.Ledger.Shelley.Genesis qualified as L (ShelleyGenesis)
 import Data.Coerce (coerce)
 import Data.Either (fromRight)
@@ -112,6 +111,6 @@ emulatorEpochSize = L.EpochSize 432000
 -- Transition Config
 
 -- | The default era for the emulator
-type EmulatorEra = L.ShelleyEra L.StandardCrypto
+type EmulatorEra = L.BabbageEra L.StandardCrypto
 
 type TransitionConfig = L.TransitionConfig EmulatorEra

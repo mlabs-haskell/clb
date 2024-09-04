@@ -11,18 +11,30 @@ module Clb.MockConfig (
   warnLimits,
   forceLimits,
   keptBlocks,
+  paramsFromConfig,
+  defaultTransitionConfig,
 ) where
 
 import Cardano.Api qualified as C
-import Cardano.Api.Shelley qualified as L
-import Cardano.Ledger.Shelley.Transition qualified as L
+import Cardano.Api.NetworkId qualified as C
+import Cardano.Api.Shelley qualified as C
+import Cardano.Ledger.Alonzo.Genesis qualified as Alonzo
+import Cardano.Ledger.Alonzo.PParams qualified as Alonzo
+import Cardano.Ledger.Alonzo.Transition qualified as T
+import Cardano.Ledger.Api qualified as L
+import Cardano.Ledger.Babbage.Transition qualified as T
+import Cardano.Ledger.Mary.Transition qualified as T
+import Cardano.Ledger.Shelley.API qualified as L
+import Cardano.Ledger.Shelley.Transition qualified as T
 import Clb.Params (
   PParams,
   TransitionConfig,
+  defaultAlonzoParams',
   defaultBabbageParams,
  )
-import Clb.TimeSlot
+import Clb.TimeSlot (SlotConfig (SlotConfig, scSlotLength, scSlotZeroTime), nominalDiffTimeToPOSIXTime, utcTimeToPOSIXTime)
 import Control.Lens.Getter ((^.))
+import PlutusLedgerApi.V3 (POSIXTime (getPOSIXTime))
 
 {- | Config for the blockchain.
 TODO: rename to ClbConfig
@@ -66,7 +78,24 @@ defaultBabbage :: MockConfig
 defaultBabbage = defaultMockConfig defaultBabbageParams
 
 defaultTransitionConfig :: TransitionConfig
-defaultTransitionConfig = L.mkShelleyTransitionConfig L.shelleyGenesisDefaults
+defaultTransitionConfig =
+  T.BabbageTransitionConfig $
+    T.AlonzoTransitionConfig (Alonzo.AlonzoGenesisWrapper udefaultAlonzoParams') $
+      T.MaryTransitionConfig $
+        T.AllegraTransitionConfig $
+          T.mkShelleyTransitionConfig C.shelleyGenesisDefaults
+  where
+    udefaultAlonzoParams' =
+      L.UpgradeAlonzoPParams
+        { uappCoinsPerUTxOWord = defaultAlonzoParams' ^. Alonzo.ppCoinsPerUTxOWordL
+        , uappCostModels = defaultAlonzoParams' ^. Alonzo.ppCostModelsL
+        , uappPrices = defaultAlonzoParams' ^. Alonzo.ppPricesL
+        , uappMaxTxExUnits = defaultAlonzoParams' ^. Alonzo.ppMaxTxExUnitsL
+        , uappMaxBlockExUnits = defaultAlonzoParams' ^. Alonzo.ppMaxBlockExUnitsL
+        , uappMaxValSize = defaultAlonzoParams' ^. Alonzo.ppMaxValSizeL
+        , uappCollateralPercentage = defaultAlonzoParams' ^. Alonzo.ppCollateralPercentageL
+        , uappMaxCollateralInputs = defaultAlonzoParams' ^. Alonzo.ppMaxCollateralInputsL
+        }
 
 -- | Default blockchain config.
 defaultMockConfig :: PParams -> MockConfig
@@ -78,6 +107,23 @@ defaultMockConfig params =
     , mockConfigSlotConfig = defaultSlotConfig
     , mockConfigConfig = defaultTransitionConfig
     }
+
+paramsFromConfig :: TransitionConfig -> MockConfig
+paramsFromConfig tc =
+  MockConfig
+    { mockConfigSlotConfig =
+        SlotConfig
+          { scSlotZeroTime = utcTimeToPOSIXTime $ L.sgSystemStart sg
+          , scSlotLength =
+              getPOSIXTime $ nominalDiffTimeToPOSIXTime $ L.fromNominalDiffTimeMicro $ L.sgSlotLength sg
+          }
+    , mockConfigProtocol = tc ^. T.tcInitialPParamsG
+    , mockConfigNetworkId = C.fromShelleyNetwork (L.sgNetworkId sg) (C.NetworkMagic $ L.sgNetworkMagic sg)
+    , mockConfigCheckLimits = ErrorLimits -- FIXME: soft-code it
+    , mockConfigConfig = tc
+    }
+  where
+    sg = tc ^. T.tcShelleyGenesisL
 
 -- | Do not check for limits
 skipLimits :: MockConfig -> MockConfig
@@ -92,4 +138,4 @@ forceLimits :: MockConfig -> MockConfig
 forceLimits cfg = cfg {mockConfigCheckLimits = ErrorLimits}
 
 keptBlocks :: MockConfig -> Integer
-keptBlocks MockConfig {mockConfigConfig} = fromIntegral $ L.sgSecurityParam (mockConfigConfig ^. L.tcShelleyGenesisL)
+keptBlocks MockConfig {mockConfigConfig} = fromIntegral $ L.sgSecurityParam (mockConfigConfig ^. T.tcShelleyGenesisL)
