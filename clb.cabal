@@ -57,34 +57,34 @@ library
     Clb.Tx
 
   build-depends:
-    , base               ^>=4.18.0
-    , base16-bytestring
-    , bytestring
-    , containers
-    , data-default
-    , lens
-    , mtl
-    , prettyprinter
-    , text
-    , time
-    , transformers
+    , base               ^>=4.18.2
+    , base16-bytestring  ^>=1.0.2
+    , bytestring         ^>=0.11.5
+    , containers         ^>=0.6.7
+    , data-default       ^>=0.7.1
+    , lens               ^>=5.2.3
+    , mtl                ^>=2.3.1
+    , prettyprinter      ^>=1.7.1
+    , text               ^>=2.0.2
+    , time               ^>=1.12.2
+    , transformers       ^>=0.6.1
 
   build-depends:
-    , cardano-api:{cardano-api, internal}                 >=8.38.0.0
+    , cardano-api:{cardano-api, internal}                 ^>=9.1.0.0
     , cardano-binary
-    , cardano-crypto-class
-    , cardano-ledger-alonzo
-    , cardano-ledger-api
+    , cardano-crypto-class                                ^>=2.1.5.0
+    , cardano-ledger-alonzo                               ^>=1.10.0.0
+    , cardano-ledger-api                                  ^>=1.9.2.1
     , cardano-ledger-babbage
-    , cardano-ledger-binary
-    , cardano-ledger-core:{cardano-ledger-core, testlib}
+    , cardano-ledger-binary                               ^>=1.3.3.0
+    , cardano-ledger-conway                               ^>=1.16.0.0
+    , cardano-ledger-core:{cardano-ledger-core, testlib}  ^>=1.13.2.0
     , cardano-ledger-mary
-    , cardano-ledger-shelley
-    , cardano-slotting
-    , ouroboros-consensus-cardano
-    , plutus-core
-    , plutus-ledger-api
-    , plutus-tx
+    , cardano-ledger-shelley                              ^>=1.12.2.0
+    , cardano-slotting                                    ^>=0.2.0.0
+    , plutus-core                                         ^>=1.30.0.0
+    , plutus-ledger-api                                   ^>=1.30.0.0
+    , plutus-tx                                           ^>=1.30.0.0
     , pretty-show
     , small-steps
 
@@ -95,10 +95,11 @@ executable smoke-test
   ghc-options:      -threaded -rtsopts
   main-is:          smoke-test.hs
   build-depends:
-    , base
-    , cardano-api:{cardano-api, internal}
+    , base                                 ^>=4.18.2
+    , cardano-api:{cardano-api, internal}  ^>=9.1.0.0
+    , cardano-ledger-core                  ^>=1.13.2.0
     , clb
-    , prettyprinter
+    , prettyprinter                        ^>=1.7.1
 
   hs-source-dirs:   test/smoke
   other-modules:

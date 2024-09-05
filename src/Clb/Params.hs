@@ -1,6 +1,6 @@
 module Clb.Params where
 
-import Cardano.Api.Shelley qualified as C (shelleyGenesisDefaults)
+import Cardano.Api.Shelley qualified as C (BabbageEra, ConwayEra, shelleyGenesisDefaults)
 import Cardano.Ledger.Alonzo qualified as L (AlonzoEra)
 import Cardano.Ledger.Alonzo.Core qualified as L (CoinPerWord (CoinPerWord))
 import Cardano.Ledger.Alonzo.PParams qualified as Alonzo
@@ -9,18 +9,20 @@ import Cardano.Ledger.Babbage qualified as L (BabbageEra)
 import Cardano.Ledger.Babbage.PParams qualified as Babbage
 import Cardano.Ledger.BaseTypes qualified as L
 import Cardano.Ledger.Coin qualified as L
+import Cardano.Ledger.Conway.PParams qualified as Conway
 import Cardano.Ledger.Core qualified as L
 import Cardano.Ledger.Crypto qualified as L (StandardCrypto)
 import Cardano.Ledger.Plutus.Language qualified as Plutus
 import Cardano.Ledger.Shelley.Genesis qualified as L (ShelleyGenesis)
+import Clb.Era (CardanoLedgerEra)
 import Data.Coerce (coerce)
 import Data.Either (fromRight)
 import Data.Functor.Identity (Identity)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromJust)
+import Test.Cardano.Ledger.Plutus qualified as LT (testingCostModelV3)
 
--- | Alonzo support is dropped, so this is just type synonym now
-type PParams = L.PParams (L.BabbageEra L.StandardCrypto)
+type PParams era = L.PParams (CardanoLedgerEra era)
 
 -- Alonzo
 
@@ -91,13 +93,62 @@ defaultCostModels =
 -- Babbage
 
 -- | Default Babbage V2 era parameters
-defaultBabbageParams :: PParams
+defaultBabbageParams :: L.PParams (CardanoLedgerEra C.BabbageEra)
 defaultBabbageParams =
   let old = coerce defaultBabbageParams'
    in coerce $
         old
           { Babbage.bppProtocolVersion =
-              L.ProtVer {pvMajor = L.eraProtVerHigh @(L.BabbageEra L.StandardCrypto), pvMinor = 0}
+              L.ProtVer {pvMajor = L.eraProtVerHigh @(CardanoLedgerEra C.BabbageEra), pvMinor = 0}
+          }
+
+-- Conway
+
+-- | Default Babbage V2 era parameters
+defaultConwayParams :: L.PParams (CardanoLedgerEra C.ConwayEra)
+defaultConwayParams =
+  let old =
+        coerce $
+          L.upgradePParams
+            Conway.UpgradeConwayPParams
+              { -- Based on: https://book.world.dev.cardano.org/environments/private/conway-genesis.json
+                -- Alternative option: https://book.world.dev.cardano.org/environments/sanchonet/conway-genesis.json
+                -- Maybe update to whatever preprod/preview is using when it's available?
+                ucppPoolVotingThresholds =
+                  Conway.PoolVotingThresholds
+                    { pvtPPSecurityGroup = fromJust $ L.boundRational 0.6
+                    , pvtMotionNoConfidence = fromJust $ L.boundRational 0.6
+                    , pvtHardForkInitiation = fromJust $ L.boundRational 0.51
+                    , pvtCommitteeNormal = fromJust $ L.boundRational 0.6
+                    , pvtCommitteeNoConfidence = fromJust $ L.boundRational 0.51
+                    }
+              , ucppMinFeeRefScriptCostPerByte = fromJust $ L.boundRational 44
+              , ucppGovActionLifetime = L.EpochInterval 8
+              , ucppGovActionDeposit = 50000000000
+              , ucppDRepVotingThresholds =
+                  Conway.DRepVotingThresholds
+                    { dvtUpdateToConstitution = fromJust $ L.boundRational 0.75
+                    , dvtTreasuryWithdrawal = fromJust $ L.boundRational 0.67
+                    , dvtPPTechnicalGroup = fromJust $ L.boundRational 0.67
+                    , dvtPPNetworkGroup = fromJust $ L.boundRational 0.67
+                    , dvtPPGovGroup = fromJust $ L.boundRational 0.75
+                    , dvtPPEconomicGroup = fromJust $ L.boundRational 0.67
+                    , dvtMotionNoConfidence = fromJust $ L.boundRational 0.67
+                    , dvtHardForkInitiation = fromJust $ L.boundRational 0.6
+                    , dvtCommitteeNormal = fromJust $ L.boundRational 0.67
+                    , dvtCommitteeNoConfidence = fromJust $ L.boundRational 0.6
+                    }
+              , ucppDRepDeposit = 500000000
+              , ucppDRepActivity = L.EpochInterval 20
+              , ucppCommitteeMinSize = 0
+              , ucppCommitteeMaxTermLength = L.EpochInterval 73
+              , ucppPlutusV3CostModel = LT.testingCostModelV3 -- FIXME: This is temporary.
+              }
+            defaultBabbageParams
+   in coerce $
+        old
+          { Conway.cppProtocolVersion =
+              L.ProtVer {pvMajor = L.eraProtVerHigh @(CardanoLedgerEra C.ConwayEra), pvMinor = 0}
           }
 
 genesisDefaultsFromParams :: L.ShelleyGenesis L.StandardCrypto

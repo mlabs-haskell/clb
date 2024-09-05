@@ -7,23 +7,28 @@ module Clb.MockConfig (
   defaultMockConfig,
   defaultBabbage,
   defaultBabbageParams,
+  defaultConway,
+  defaultConwayParams,
   skipLimits,
   warnLimits,
   forceLimits,
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Ledger.Api.PParams qualified as L
+import Clb.Era (CardanoLedgerEra)
 import Clb.Params (
   PParams,
   defaultBabbageParams,
+  defaultConwayParams,
  )
 import Clb.TimeSlot
 
 -- | Config for the blockchain.
-data MockConfig = MockConfig
+data MockConfig era = MockConfig
   { mockConfigCheckLimits :: !CheckLimits
   -- ^ limits check mode
-  , mockConfigProtocol :: !PParams
+  , mockConfigProtocol :: !(PParams era)
   -- ^ Protocol parameters
   , mockConfigNetworkId :: !C.NetworkId
   -- ^ Network id (mainnet / testnet)
@@ -50,13 +55,18 @@ defaultSlotConfig =
 
 {- | Default Babbage era config. If we use this parameter
  then Babbage era TXs will be used for testing
- FIXME: remove rest of `Babbage` naming distinction (not applicable anymore)
 -}
-defaultBabbage :: MockConfig
+defaultBabbage :: MockConfig C.BabbageEra
 defaultBabbage = defaultMockConfig defaultBabbageParams
 
+{- | Default Babbage era config. If we use this parameter
+ then Babbage era TXs will be used for testing
+-}
+defaultConway :: MockConfig C.ConwayEra
+defaultConway = defaultMockConfig defaultConwayParams
+
 -- | Default blockchain config.
-defaultMockConfig :: PParams -> MockConfig
+defaultMockConfig :: L.PParams (CardanoLedgerEra era) -> MockConfig era
 defaultMockConfig params =
   MockConfig
     { mockConfigCheckLimits = ErrorLimits
@@ -66,13 +76,13 @@ defaultMockConfig params =
     }
 
 -- | Do not check for limits
-skipLimits :: MockConfig -> MockConfig
+skipLimits :: MockConfig era -> MockConfig era
 skipLimits cfg = cfg {mockConfigCheckLimits = IgnoreLimits}
 
 -- | Warn on limits
-warnLimits :: MockConfig -> MockConfig
+warnLimits :: MockConfig era -> MockConfig era
 warnLimits cfg = cfg {mockConfigCheckLimits = WarnLimits}
 
 -- | Error on limits
-forceLimits :: MockConfig -> MockConfig
+forceLimits :: MockConfig era -> MockConfig era
 forceLimits cfg = cfg {mockConfigCheckLimits = ErrorLimits}
