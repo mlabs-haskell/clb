@@ -5,7 +5,12 @@ build-type:      Simple
 extra-doc-files: README.md
 license:         MIT
 maintainer:      ilia@mlabs.city
-author:          Ilia Rodionov, Gregory Gerasev, George Flerovsky
+author:
+  , Ilia Rodionov
+  , George Flerovsky
+  , Gregory Gerasev
+  , Rajdeep Maity
+
 synopsis:
   The Cardano emulator that just works AKA Cardano Ledger Backend (CLB),
   pronounced /klʌb/.
