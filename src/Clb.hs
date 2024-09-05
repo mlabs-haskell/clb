@@ -80,7 +80,7 @@ import Cardano.Ledger.Slot (SlotNo)
 import Cardano.Ledger.TxIn qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo)
 import Clb.ClbLedgerState (EmulatedLedgerState (..), currentBlock, initialState, memPoolState, setSlot, setUtxo)
-import Clb.Era (IsCardanoLedgerEra, CardanoLedgerEra, maryBasedEra)
+import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra, maryBasedEra)
 import Clb.MockConfig (MockConfig (..))
 import Clb.MockConfig qualified as X (defaultBabbage, defaultConway)
 import Clb.Params (PParams, genesisDefaultsFromParams)
@@ -197,7 +197,7 @@ runClb :: Clb era a -> ClbState era -> (a, ClbState era)
 runClb (ClbT act) = runState act
 
 -- | Init emulator state.
-initClb :: forall era. IsCardanoLedgerEra era => MockConfig era -> Api.Value -> Api.Value -> ClbState era
+initClb :: forall era. (IsCardanoLedgerEra era) => MockConfig era -> Api.Value -> Api.Value -> ClbState era
 initClb
   cfg@MockConfig {mockConfigProtocol = pparams}
   _initVal
@@ -286,24 +286,24 @@ instance Pretty Slot where
 -- Actions in Clb monad
 --------------------------------------------------------------------------------
 
-getCurrentSlot :: Monad m => ClbT era m C.SlotNo
+getCurrentSlot :: (Monad m) => ClbT era m C.SlotNo
 getCurrentSlot = gets (L.ledgerSlotNo . _ledgerEnv . emulatedLedgerState)
 
 -- | Log a generic (non-typed) error.
-logError :: Monad m => String -> ClbT era m ()
+logError :: (Monad m) => String -> ClbT era m ()
 logError msg = do
   logInfo $ LogEntry Error msg
   logFail $ GenericFail msg
 
 -- | Add a non-error log enty.
-logInfo :: Monad m => LogEntry -> ClbT era m ()
+logInfo :: (Monad m) => LogEntry -> ClbT era m ()
 logInfo le = do
   C.SlotNo slotNo <- getCurrentSlot
   let slot = Slot $ toInteger slotNo
   modify' $ \s -> s {mockInfo = appendLog slot le (mockInfo s)}
 
 -- | Log failure.
-logFail :: Monad m => FailReason -> ClbT era m ()
+logFail :: (Monad m) => FailReason -> ClbT era m ()
 logFail res = do
   C.SlotNo slotNo <- getCurrentSlot
   let slot = Slot $ toInteger slotNo
@@ -325,7 +325,7 @@ txOutRefAt :: forall era m. (Monad m, IsCardanoLedgerEra era) => C.AddressInEra 
 txOutRefAt addr = gets (txOutRefAtState @era $ C.toShelleyAddr addr)
 
 -- | Read all TxOutRefs that belong to given address.
-txOutRefAtState :: IsCardanoLedgerEra era => L.Addr L.StandardCrypto -> ClbState era -> [P.TxOutRef]
+txOutRefAtState :: (IsCardanoLedgerEra era) => L.Addr L.StandardCrypto -> ClbState era -> [P.TxOutRef]
 txOutRefAtState addr st = transTxIn <$> M.keys (M.filter atAddr utxos)
   where
     utxos = L.unUTxO $ getUtxosAtState st
@@ -335,11 +335,11 @@ txOutRefAtState addr st = transTxIn <$> M.keys (M.filter atAddr utxos)
       Left addr' -> addr == addr'
 
 -- | Read all TxOutRefs that belong to given payment credential.
-txOutRefAtPaymentCred :: IsCardanoLedgerEra era => P.Credential -> Clb era [P.TxOutRef]
+txOutRefAtPaymentCred :: (IsCardanoLedgerEra era) => P.Credential -> Clb era [P.TxOutRef]
 txOutRefAtPaymentCred cred = gets (txOutRefAtPaymentCredState cred)
 
 -- | Read all TxOutRefs that belong to given payment credential.
-txOutRefAtPaymentCredState :: IsCardanoLedgerEra era => P.Credential -> ClbState era -> [P.TxOutRef]
+txOutRefAtPaymentCredState :: (IsCardanoLedgerEra era) => P.Credential -> ClbState era -> [P.TxOutRef]
 txOutRefAtPaymentCredState cred st = fmap transTxIn . M.keys $ M.filter withCred utxos
   where
     withCred out = case out ^. Core.addrEitherTxOutL of
@@ -350,7 +350,7 @@ txOutRefAtPaymentCredState cred st = fmap transTxIn . M.keys $ M.filter withCred
     addrHasCred _ = False
     utxos = L.unUTxO $ getUtxosAtState st
 
-getEpochInfo :: Monad m => ClbT era m (EpochInfo (Either Text))
+getEpochInfo :: (Monad m) => ClbT era m (EpochInfo (Either Text))
 getEpochInfo =
   gets (slotConfigToEpochInfo . mockConfigSlotConfig . mockConfig)
 
@@ -421,7 +421,7 @@ datumHash :: PV2.Datum -> PV2.DatumHash
 datumHash (PV2.Datum (PV2.BuiltinData dat)) =
   transDataHash $ L.hashData $ L.Data @(L.AlonzoEra L.StandardCrypto) dat
 
-dumpUtxoState :: IsCardanoLedgerEra era => Clb era ()
+dumpUtxoState :: (IsCardanoLedgerEra era) => Clb era ()
 dumpUtxoState = do
   s <- gets ((^. memPoolState) . emulatedLedgerState)
   logInfo $ LogEntry Info $ ppShow s

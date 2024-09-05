@@ -12,4 +12,4 @@ Might has IsValid = False in which case collaterals will be collected.
 newtype OnChainTx era = OnChainTx
   {getOnChainTx :: L.Validated (Core.Tx (CardanoLedgerEra era))}
 
-deriving newtype instance Show (Core.Tx (CardanoLedgerEra era)) => Show (OnChainTx era)
+deriving newtype instance (Show (Core.Tx (CardanoLedgerEra era))) => Show (OnChainTx era)

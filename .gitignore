@@ -24,3 +24,6 @@ Thumbs.db
 
 # Local notes
 TODO.md
+
+# pre-commit hooks
+/.pre-commit-config.yaml

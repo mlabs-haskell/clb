@@ -6,11 +6,11 @@ import Cardano.Ledger.Api qualified as C
 import Cardano.Ledger.Shelley.API qualified as L
 import Cardano.Ledger.Shelley.LedgerState qualified as L
 import Cardano.Ledger.Slot (SlotNo)
-import Clb.Era (IsCardanoLedgerEra, CardanoLedgerEra)
+import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra)
 import Clb.Params (PParams)
 import Clb.Tx (OnChainTx)
 import Control.Lens (makeLenses, over)
-import Data.Default (def, Default)
+import Data.Default (Default, def)
 
 {- | Emulator block (currently we are just keeping one jumbo block
 that holds all transactions but this might be changed in the future)

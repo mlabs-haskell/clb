@@ -15,14 +15,14 @@ module Clb.MockConfig (
 ) where
 
 import Cardano.Api qualified as C
+import Cardano.Ledger.Api.PParams qualified as L
 import Clb.Era (CardanoLedgerEra)
 import Clb.Params (
   PParams,
-  defaultConwayParams,
   defaultBabbageParams,
+  defaultConwayParams,
  )
 import Clb.TimeSlot
-import qualified Cardano.Ledger.Api.PParams as L
 
 -- | Config for the blockchain.
 data MockConfig era = MockConfig
