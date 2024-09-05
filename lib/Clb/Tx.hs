@@ -12,8 +12,8 @@ import Codec.Serialise (Serialise (..))
 {- | A validated Tx, that made it to the chain.
 Might has IsValid = False in which case collaterals will be collected.
 -}
-newtype OnChainTx = OnChainTx
-  {getOnChainTx :: L.Validated (Core.Tx EmulatorEra)}
+newtype OnChainTx era = OnChainTx
+  {getOnChainTx :: L.Validated (Core.Tx (CardanoLedgerEra era))}
   deriving newtype (Show)
 
 instance Serialise OnChainTx where
@@ -23,4 +23,5 @@ instance Serialise OnChainTx where
 {- | A block on the blockchain. This is just a list of transactions
 following on from the chain so far.
 -}
-type Block = [OnChainTx]
+type Block era = [OnChainTx era]
+

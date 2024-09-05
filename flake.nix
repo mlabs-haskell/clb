@@ -1,5 +1,5 @@
 {
-  description = "CLB Cardano Emulator";
+  description = "CLB Cardano Node Emulator";
 
   nixConfig = {
     extra-substituters = [ "https://cache.iog.io" ];
@@ -51,10 +51,8 @@
             };
           project = pkgs.haskell-nix.cabalProject' {
             src = ./.;
-            compiler-nix-name = "ghc963";
-            inputMap = {
-              "https://input-output-hk.github.io/cardano-haskell-packages" = CHaP;
-            };
+            compiler-nix-name = "ghc966";
+            inputMap = { "https://chap.intersectmbo.org/" = CHaP; };
             shell = {
               withHoogle = true;
               withHaddock = true;

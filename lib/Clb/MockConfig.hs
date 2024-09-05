@@ -7,6 +7,8 @@ module Clb.MockConfig (
   defaultMockConfig,
   defaultBabbage,
   defaultBabbageParams,
+  defaultConway,
+  defaultConwayParams,
   skipLimits,
   warnLimits,
   forceLimits,
@@ -31,6 +33,7 @@ import Clb.Params (
   TransitionConfig,
   defaultAlonzoParams',
   defaultBabbageParams,
+  defaultConwayParams,
  )
 import Clb.TimeSlot (SlotConfig (SlotConfig, scSlotLength, scSlotZeroTime), nominalDiffTimeToPOSIXTime, utcTimeToPOSIXTime)
 import Control.Lens.Getter ((^.))
@@ -74,8 +77,13 @@ defaultSlotConfig =
  then Babbage era TXs will be used for testing
  FIXME: remove rest of `Babbage` naming distinction (not applicable anymore)
 -}
-defaultBabbage :: MockConfig
+defaultBabbage :: MockConfig C.BabbageEra
 defaultBabbage = defaultMockConfig defaultBabbageParams
+
+{- | Default Conwayconfig.
+-}
+defaultConway :: MockConfig C.ConwayEra
+defaultConway = defaultMockConfig defaultConwayParams
 
 defaultTransitionConfig :: TransitionConfig
 defaultTransitionConfig =
@@ -108,7 +116,7 @@ defaultMockConfig params =
     , mockConfigConfig = defaultTransitionConfig
     }
 
-paramsFromConfig :: TransitionConfig -> MockConfig
+paramsFromConfig :: TransitionConfig -> MockConfig era
 paramsFromConfig tc =
   MockConfig
     { mockConfigSlotConfig =
@@ -126,16 +134,16 @@ paramsFromConfig tc =
     sg = tc ^. T.tcShelleyGenesisL
 
 -- | Do not check for limits
-skipLimits :: MockConfig -> MockConfig
+skipLimits :: MockConfig era -> MockConfig era
 skipLimits cfg = cfg {mockConfigCheckLimits = IgnoreLimits}
 
 -- | Warn on limits
-warnLimits :: MockConfig -> MockConfig
+warnLimits :: MockConfig era -> MockConfig era
 warnLimits cfg = cfg {mockConfigCheckLimits = WarnLimits}
 
 -- | Error on limits
-forceLimits :: MockConfig -> MockConfig
+forceLimits :: MockConfig era -> MockConfig era
 forceLimits cfg = cfg {mockConfigCheckLimits = ErrorLimits}
 
-keptBlocks :: MockConfig -> Integer
+keptBlocks :: MockConfig era -> Integer
 keptBlocks MockConfig {mockConfigConfig} = fromIntegral $ L.sgSecurityParam (mockConfigConfig ^. T.tcShelleyGenesisL)
