@@ -24,8 +24,8 @@ import Cardano.Ledger.Alonzo.Genesis qualified as Alonzo
 import Cardano.Ledger.Alonzo.PParams qualified as Alonzo
 import Cardano.Ledger.Alonzo.Transition qualified as T
 import Cardano.Ledger.Api qualified as L
-import Cardano.Ledger.Conway.Transition qualified as T
 import Cardano.Ledger.Babbage.Transition qualified as T
+import Cardano.Ledger.Conway.Transition qualified as T
 import Cardano.Ledger.Mary.Transition qualified as T
 import Cardano.Ledger.Shelley.API qualified as L
 import Cardano.Ledger.Shelley.Transition qualified as T
@@ -79,15 +79,35 @@ defaultSlotConfig =
  FIXME: remove rest of `Babbage` naming distinction (not applicable anymore)
 -}
 defaultBabbage :: MockConfig C.BabbageEra
-defaultBabbage = defaultMockConfig defaultBabbageParams
+defaultBabbage = defaultMockConfig defaultBabbageParams defaultTransitionConfig
 
-{- | Default Conwayconfig.
--}
+-- | Default Conwayconfig.
 defaultConway :: MockConfig C.ConwayEra
-defaultConway = defaultMockConfig defaultConwayParams
+defaultConway = defaultMockConfig defaultConwayParams defaultConwayTransitionConfig
 
-defaultTransitionConfig :: TransitionConfig (L.ConwayEra L.StandardCrypto)
+defaultTransitionConfig :: TransitionConfig C.BabbageEra
 defaultTransitionConfig =
+  T.BabbageTransitionConfig $
+    T.AlonzoTransitionConfig (Alonzo.AlonzoGenesisWrapper udefaultAlonzoParams') $
+      T.MaryTransitionConfig $
+        T.AllegraTransitionConfig $
+          T.mkShelleyTransitionConfig C.shelleyGenesisDefaults
+  where
+    udefaultAlonzoParams' =
+      L.UpgradeAlonzoPParams
+        { uappCoinsPerUTxOWord = defaultAlonzoParams' ^. Alonzo.ppCoinsPerUTxOWordL
+        , uappCostModels = defaultAlonzoParams' ^. Alonzo.ppCostModelsL
+        , uappPrices = defaultAlonzoParams' ^. Alonzo.ppPricesL
+        , uappMaxTxExUnits = defaultAlonzoParams' ^. Alonzo.ppMaxTxExUnitsL
+        , uappMaxBlockExUnits = defaultAlonzoParams' ^. Alonzo.ppMaxBlockExUnitsL
+        , uappMaxValSize = defaultAlonzoParams' ^. Alonzo.ppMaxValSizeL
+        , uappCollateralPercentage = defaultAlonzoParams' ^. Alonzo.ppCollateralPercentageL
+        , uappMaxCollateralInputs = defaultAlonzoParams' ^. Alonzo.ppMaxCollateralInputsL
+        }
+
+-- FIXME: base on Babbage
+defaultConwayTransitionConfig :: TransitionConfig C.ConwayEra
+defaultConwayTransitionConfig =
   -- FIXME: undefined
   T.ConwayTransitionConfig undefined $
     T.BabbageTransitionConfig $
@@ -109,17 +129,20 @@ defaultTransitionConfig =
         }
 
 -- | Default blockchain config.
-defaultMockConfig :: L.PParams (CardanoLedgerEra era) -> MockConfig era
-defaultMockConfig params =
+defaultMockConfig :: PParams era -> TransitionConfig era -> MockConfig era
+defaultMockConfig params config =
   MockConfig
     { mockConfigCheckLimits = ErrorLimits
     , mockConfigProtocol = params
     , mockConfigNetworkId = C.Testnet $ C.NetworkMagic 42
     , mockConfigSlotConfig = defaultSlotConfig
-    , mockConfigConfig = defaultTransitionConfig
+    , mockConfigConfig = config
     }
 
-paramsFromConfig :: TransitionConfig era -> MockConfig era
+paramsFromConfig ::
+  (T.EraTransition (CardanoLedgerEra era)) =>
+  TransitionConfig era ->
+  MockConfig era
 paramsFromConfig tc =
   MockConfig
     { mockConfigSlotConfig =
@@ -148,5 +171,6 @@ warnLimits cfg = cfg {mockConfigCheckLimits = WarnLimits}
 forceLimits :: MockConfig era -> MockConfig era
 forceLimits cfg = cfg {mockConfigCheckLimits = ErrorLimits}
 
-keptBlocks :: MockConfig era -> Integer
-keptBlocks MockConfig {mockConfigConfig} = fromIntegral $ L.sgSecurityParam (mockConfigConfig ^. T.tcShelleyGenesisL)
+keptBlocks :: (T.EraTransition (CardanoLedgerEra era)) => MockConfig era -> Integer
+keptBlocks MockConfig {mockConfigConfig} =
+  fromIntegral $ L.sgSecurityParam (mockConfigConfig ^. T.tcShelleyGenesisL)

@@ -1,11 +1,11 @@
 module Clb.Params where
 
+import Cardano.Api (AlonzoEra, BabbageEra, ConwayEra)
 import Cardano.Api.Shelley qualified as C (BabbageEra, ConwayEra, shelleyGenesisDefaults)
 import Cardano.Ledger.Alonzo qualified as L (AlonzoEra)
 import Cardano.Ledger.Alonzo.Core qualified as L (CoinPerWord (CoinPerWord))
 import Cardano.Ledger.Alonzo.PParams qualified as Alonzo
 import Cardano.Ledger.Alonzo.Scripts qualified as Alonzo
-import Cardano.Ledger.Babbage qualified as L (BabbageEra)
 import Cardano.Ledger.Babbage.PParams qualified as Babbage
 import Cardano.Ledger.Babbage.Transition qualified as L
 import Cardano.Ledger.BaseTypes qualified as L
@@ -27,7 +27,8 @@ type PParams era = L.PParams (CardanoLedgerEra era)
 
 -- Alonzo
 
-defaultAlonzoParams' :: L.PParams (L.AlonzoEra L.StandardCrypto)
+-- defaultAlonzoParams' :: L.PParams (L.AlonzoEra L.StandardCrypto)
+defaultAlonzoParams' :: PParams AlonzoEra
 defaultAlonzoParams' =
   let
     app :: Alonzo.AlonzoPParams Identity (L.AlonzoEra L.StandardCrypto) =
@@ -67,7 +68,8 @@ defaultAlonzoParams' =
 rational :: (L.BoundedRational r) => Rational -> r
 rational = fromJust . L.boundRational
 
-defaultBabbageParams' :: L.PParams (L.BabbageEra L.StandardCrypto)
+-- defaultBabbageParams' :: L.PParams (L.BabbageEra L.StandardCrypto)
+defaultBabbageParams' :: PParams BabbageEra
 defaultBabbageParams' = L.upgradePParams () defaultAlonzoParams'
 
 defaultCostModels :: Alonzo.CostModels
@@ -94,7 +96,7 @@ defaultCostModels =
 -- Babbage
 
 -- | Default Babbage V2 era parameters
-defaultBabbageParams :: L.PParams (CardanoLedgerEra C.BabbageEra)
+defaultBabbageParams :: PParams BabbageEra
 defaultBabbageParams =
   let old = coerce defaultBabbageParams'
    in coerce $
@@ -106,7 +108,7 @@ defaultBabbageParams =
 -- Conway
 
 -- | Default Babbage V2 era parameters
-defaultConwayParams :: L.PParams (CardanoLedgerEra C.ConwayEra)
+defaultConwayParams :: PParams ConwayEra
 defaultConwayParams =
   let old =
         coerce $
@@ -160,9 +162,4 @@ emulatorEpochSize :: L.EpochSize
 emulatorEpochSize = L.EpochSize 432000
 
 -- Transition Config
-
--- | The default era for the emulator
--- type EmulatorEra = C.ConwayEra
-
--- TODO: not sure, verify
-type TransitionConfig era = L.TransitionConfig era
+type TransitionConfig era = L.TransitionConfig (CardanoLedgerEra era)

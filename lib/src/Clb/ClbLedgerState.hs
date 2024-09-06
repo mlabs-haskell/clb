@@ -30,11 +30,14 @@ data CardanoTx where
 instance Show CardanoTx where
   show = const "CardanoTx"
 
+-- FIXME:
 -- getEmulatorEraTx :: CardanoTx -> C.Tx C.ConwayEra
-getEmulatorEraTx :: CardanoTx -> C.Tx C.BabbageEra
+getEmulatorEraTx :: CardanoTx -> C.Tx era
+getEmulatorEraTx = undefined
+
 -- getEmulatorEraTx (CardanoTx tx C.ShelleyBasedEraConway) = tx
-getEmulatorEraTx (CardanoTx tx C.ShelleyBasedEraBabbage) = tx
-getEmulatorEraTx _ = error "getEmulatorEraTx: Expected a Conway tx"
+-- getEmulatorEraTx (CardanoTx tx C.ShelleyBasedEraBabbage) = tx
+-- getEmulatorEraTx _ = error "getEmulatorEraTx: Expected a Conway tx"
 
 -- pattern CardanoEmulatorEraTx :: C.Tx C.ConwayEra -> CardanoTx
 pattern CardanoEmulatorEraTx :: C.Tx C.BabbageEra -> CardanoTx
@@ -66,15 +69,22 @@ setSlot :: SlotNo -> EmulatedLedgerState era -> EmulatedLedgerState era
 setSlot sl = over ledgerEnv (\l -> l {L.ledgerSlotNo = sl})
 
 -- | Update the slot number
-updateSlot :: (SlotNo -> SlotNo) -> EmulatedLedgerState -> EmulatedLedgerState
+updateSlot :: (SlotNo -> SlotNo) -> EmulatedLedgerState era -> EmulatedLedgerState era
 updateSlot f = over ledgerEnv (\l -> l {L.ledgerSlotNo = f (L.ledgerSlotNo l)})
 
 -- | Get the slot number
-getSlot :: (Num a) => EmulatedLedgerState -> a
+getSlot :: (Num a) => EmulatedLedgerState era -> a
 getSlot (EmulatedLedgerState L.LedgerEnv {ledgerSlotNo = SlotNo s} _ _) = fromIntegral s
 
 -- | Set the utxo
-setUtxo :: (C.EraTxOut (CardanoLedgerEra era), Default (C.GovState (CardanoLedgerEra era))) => L.PParams (CardanoLedgerEra era) -> L.UTxO (CardanoLedgerEra era) -> EmulatedLedgerState era -> EmulatedLedgerState era
+setUtxo ::
+  ( L.EraTxOut (CardanoLedgerEra era)
+  , Default (L.GovState (CardanoLedgerEra era))
+  ) =>
+  L.PParams (CardanoLedgerEra era) ->
+  L.UTxO (CardanoLedgerEra era) ->
+  EmulatedLedgerState era ->
+  EmulatedLedgerState era
 setUtxo params utxo els@EmulatedLedgerState {_memPoolState} = els {_memPoolState = newPoolState}
   where
     newPoolState = _memPoolState {L.lsUTxOState = L.smartUTxOState params utxo (L.Coin 0) (L.Coin 0) def (L.Coin 0)}
@@ -89,7 +99,7 @@ setUtxo params utxo els@EmulatedLedgerState {_memPoolState} = els {_memPoolState
 --     & over previousBlocks ((reverse $ state ^. currentBlock) :)
 
 -- | Initial ledger state for a distribution
-initialState :: (C.EraTxOut (CardanoLedgerEra era), Default (C.GovState (CardanoLedgerEra era))) => PParams era -> EmulatedLedgerState era
+initialState :: (L.EraTxOut (CardanoLedgerEra era), Default (L.GovState (CardanoLedgerEra era))) => PParams era -> EmulatedLedgerState era
 initialState params =
   EmulatedLedgerState
     { _ledgerEnv =
