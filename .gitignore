@@ -3,6 +3,7 @@
 dist-newstyle/
 # Local configuration files
 cabal.project.local*
+.ghc.environment.*
 
 # nix-build results
 result

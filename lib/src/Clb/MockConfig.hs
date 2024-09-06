@@ -24,10 +24,12 @@ import Cardano.Ledger.Alonzo.Genesis qualified as Alonzo
 import Cardano.Ledger.Alonzo.PParams qualified as Alonzo
 import Cardano.Ledger.Alonzo.Transition qualified as T
 import Cardano.Ledger.Api qualified as L
+import Cardano.Ledger.Conway.Transition qualified as T
 import Cardano.Ledger.Babbage.Transition qualified as T
 import Cardano.Ledger.Mary.Transition qualified as T
 import Cardano.Ledger.Shelley.API qualified as L
 import Cardano.Ledger.Shelley.Transition qualified as T
+import Clb.Era (CardanoLedgerEra)
 import Clb.Params (
   PParams,
   TransitionConfig,
@@ -42,19 +44,18 @@ import PlutusLedgerApi.V3 (POSIXTime (getPOSIXTime))
 {- | Config for the blockchain.
 TODO: rename to ClbConfig
 -}
-data MockConfig = MockConfig
+data MockConfig era = MockConfig
   { mockConfigCheckLimits :: !CheckLimits
   -- ^ limits check mode
-  , mockConfigProtocol :: !PParams
+  , mockConfigProtocol :: !(PParams era)
   -- ^ Protocol parameters
   , mockConfigNetworkId :: !C.NetworkId
   -- ^ Network id (mainnet / testnet)
   , mockConfigSlotConfig :: !SlotConfig
   -- ^ Slot config
-  , mockConfigConfig :: !TransitionConfig
+  , mockConfigConfig :: !(TransitionConfig era)
   -- ^ Transition configuration : needed to be able to start in a current era
   }
-  deriving stock (Show)
 
 data CheckLimits
   = -- | ignore TX-limits
@@ -85,13 +86,15 @@ defaultBabbage = defaultMockConfig defaultBabbageParams
 defaultConway :: MockConfig C.ConwayEra
 defaultConway = defaultMockConfig defaultConwayParams
 
-defaultTransitionConfig :: TransitionConfig
+defaultTransitionConfig :: TransitionConfig (L.ConwayEra L.StandardCrypto)
 defaultTransitionConfig =
-  T.BabbageTransitionConfig $
-    T.AlonzoTransitionConfig (Alonzo.AlonzoGenesisWrapper udefaultAlonzoParams') $
-      T.MaryTransitionConfig $
-        T.AllegraTransitionConfig $
-          T.mkShelleyTransitionConfig C.shelleyGenesisDefaults
+  -- FIXME: undefined
+  T.ConwayTransitionConfig undefined $
+    T.BabbageTransitionConfig $
+      T.AlonzoTransitionConfig (Alonzo.AlonzoGenesisWrapper udefaultAlonzoParams') $
+        T.MaryTransitionConfig $
+          T.AllegraTransitionConfig $
+            T.mkShelleyTransitionConfig C.shelleyGenesisDefaults
   where
     udefaultAlonzoParams' =
       L.UpgradeAlonzoPParams
@@ -106,7 +109,7 @@ defaultTransitionConfig =
         }
 
 -- | Default blockchain config.
-defaultMockConfig :: PParams -> MockConfig
+defaultMockConfig :: L.PParams (CardanoLedgerEra era) -> MockConfig era
 defaultMockConfig params =
   MockConfig
     { mockConfigCheckLimits = ErrorLimits
@@ -116,7 +119,7 @@ defaultMockConfig params =
     , mockConfigConfig = defaultTransitionConfig
     }
 
-paramsFromConfig :: TransitionConfig -> MockConfig era
+paramsFromConfig :: TransitionConfig era -> MockConfig era
 paramsFromConfig tc =
   MockConfig
     { mockConfigSlotConfig =

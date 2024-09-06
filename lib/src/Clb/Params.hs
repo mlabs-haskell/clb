@@ -162,6 +162,7 @@ emulatorEpochSize = L.EpochSize 432000
 -- Transition Config
 
 -- | The default era for the emulator
-type EmulatorEra = L.BabbageEra L.StandardCrypto
+-- type EmulatorEra = C.ConwayEra
 
-type TransitionConfig = L.TransitionConfig EmulatorEra
+-- TODO: not sure, verify
+type TransitionConfig era = L.TransitionConfig era
