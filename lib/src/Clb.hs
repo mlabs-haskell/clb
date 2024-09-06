@@ -218,8 +218,7 @@ runClb (ClbT act) = runState act
 -- | Init emulator state.
 initClb ::
   forall era.
-  ( IsCardanoLedgerEra era
-  ) =>
+  (IsCardanoLedgerEra era) =>
   MockConfig era ->
   Api.Value ->
   Api.Value ->

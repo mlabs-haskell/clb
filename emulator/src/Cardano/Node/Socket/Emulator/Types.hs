@@ -18,11 +18,11 @@
 -- | This module exports data types for logging, events and configuration
 module Cardano.Node.Socket.Emulator.Types where
 
-import Cardano.Api (ConwayEra, Lovelace (Lovelace), lovelaceToValue)
+import Cardano.Api (ConwayEra, lovelaceToValue)
 import Cardano.Chain.Slotting (EpochSlots (..))
 import Cardano.Ledger.Block qualified as CL
 import Cardano.Ledger.Era qualified as CL
-import Cardano.Ledger.Shelley.API (LedgerEnv (ledgerSlotNo), Nonce (NeutralNonce), extractTx, unsafeMakeValidated)
+import Cardano.Ledger.Shelley.API (Coin (Coin), LedgerEnv (ledgerSlotNo), Nonce (NeutralNonce), extractTx, unsafeMakeValidated)
 import Codec.Serialise (DeserialiseFailure)
 import Codec.Serialise qualified as CBOR
 import Control.Concurrent (MVar, modifyMVar_, putMVar, readMVar, takeMVar)
@@ -87,6 +87,7 @@ import Ouroboros.Network.Util.ShowProxy
 import Prettyprinter (Pretty, pretty, viaShow, (<+>))
 
 -- import Prettyprinter.Extras (PrettyShow (PrettyShow))
+import Cardano.Binary qualified as CBOR
 
 import Cardano.Api.Address (AddressInEra)
 import Cardano.Protocol.TPraos.BHeader
@@ -101,6 +102,8 @@ import Test.Cardano.Protocol.TPraos.Create (mkBlock, mkOCert)
 
 import Cardano.Api qualified as C
 import Cardano.Api.NetworkId (mainnetNetworkMagic)
+import Cardano.Ledger.Core qualified as Core
+import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra)
 import Control.Exception (Exception)
 import Control.Monad.State.Lazy (StateT (runStateT), runState)
 import Data.Base16.Types qualified as B16
@@ -108,25 +111,25 @@ import Data.ByteString.Base16 qualified as B16
 
 type Tip = Ouroboros.Tip (CardanoBlock StandardCrypto)
 
-type TxPool = [OnChainTx]
+type TxPool era = [OnChainTx era]
 
-data SocketEmulatorState = SocketEmulatorState
-  { _emulatorState :: ClbState
-  , _channel :: TChan Block
+data SocketEmulatorState era = SocketEmulatorState
+  { _emulatorState :: ClbState era
+  , _channel :: TChan (Block era)
   , _tip :: Tip
   }
   deriving (Generic)
 
 makeLenses ''SocketEmulatorState
 
-instance Show SocketEmulatorState where
-  -- Skip showing the full chain
-  show SocketEmulatorState {_emulatorState, _tip} =
-    "SocketEmulatorState { "
-      <> show _emulatorState
-      <> ", "
-      <> show _tip
-      <> " }"
+-- instance Show SocketEmulatorState where
+--   -- Skip showing the full chain
+--   show SocketEmulatorState {_emulatorState, _tip} =
+--     "SocketEmulatorState { "
+--       <> show _emulatorState
+--       <> ", "
+--       <> show _tip
+--       <> " }"
 
 -- | Node server configuration
 data NodeServerConfig = NodeServerConfig
@@ -174,18 +177,19 @@ instance Default NodeServerConfig where
 type EmulatorLogs = ()
 
 -- | Application State
-data AppState = AppState
-  { _socketEmulatorState :: SocketEmulatorState
+data AppState era = AppState
+  { _socketEmulatorState :: SocketEmulatorState era
   -- ^ blockchain state
   , _emulatorLogs :: EmulatorLogs
   -- ^ history of all log messages
-  , _emulatorParams :: MockConfig
+  , _emulatorParams :: MockConfig era
   }
-  deriving (Show)
+
+-- deriving (Show)
 
 makeLenses 'AppState
 
-fromEmulatorChainState :: (MonadIO m) => ClbState -> m SocketEmulatorState
+fromEmulatorChainState :: (MonadIO m, CBOR.ToCBOR (Core.Tx (CardanoLedgerEra era))) => ClbState era -> m (SocketEmulatorState era)
 fromEmulatorChainState state = do
   ch <- liftIO $ atomically newTChan
   let chainNewestFirst = [view (emulatedLedgerState . currentBlock) state] -- we don't have blocks yet
@@ -207,23 +211,29 @@ type CardanoAddress = AddressInEra ConwayEra
 {- | 'ChainState' with initial values
 initialChainState :: (MonadIO m) => MockConfig -> Map.Map CardanoAddress Value -> m SocketEmulatorState
 -}
-initialChainState :: (MonadIO m) => MockConfig -> m SocketEmulatorState
+initialChainState ::
+  forall m era.
+  ( MonadIO m
+  , IsCardanoLedgerEra era
+  ) =>
+  MockConfig era ->
+  m (SocketEmulatorState era)
 initialChainState params =
   fromEmulatorChainState $
     initClb params _dummyTotalNotUsedNow perWallet
   where
-    _dummyTotalNotUsedNow = lovelaceToValue $ Lovelace 1_000_000_000_000
-    perWallet = lovelaceToValue $ Lovelace 1_000_000_000
+    _dummyTotalNotUsedNow = lovelaceToValue $ Coin 1_000_000_000_000
+    perWallet = lovelaceToValue $ Coin 1_000_000_000
 
-getChannel :: (MonadIO m) => MVar AppState -> m (TChan Block)
+getChannel :: (MonadIO m) => MVar (AppState era) -> m (TChan (Block era))
 getChannel mv = liftIO (readMVar mv) <&> view (socketEmulatorState . channel)
 
 -- Get the current tip.
-getTip :: (MonadIO m) => MVar AppState -> m Tip
+getTip :: (MonadIO m) => MVar (AppState era) -> m Tip
 getTip mv = liftIO (readMVar mv) <&> view (socketEmulatorState . tip)
 
 -- Set the new tip
-setTip :: (MonadIO m) => MVar AppState -> Block -> m ()
+setTip :: (MonadIO m, CBOR.ToCBOR (Core.Tx (CardanoLedgerEra era))) => MVar (AppState era) -> Block era -> m ()
 setTip mv block = liftIO $ modifyMVar_ mv $ \oldState -> do
   -- let slot = oldState ^. socketEmulatorState . emulatorState . esChainState . EC.ledgerState . to getSlot
   let slot =
@@ -242,12 +252,12 @@ instance Exception EmulatorError
 
 -- | Run all chain effects in the IO Monad
 runChainEffects ::
-  MVar AppState ->
-  ClbT IO a ->
+  MVar (AppState era) ->
+  ClbT era IO a ->
   IO (EmulatorLogs, Either EmulatorError a)
 runChainEffects stateVar eff = do
   AppState (SocketEmulatorState oldState chan tip') events params <- liftIO $ takeMVar stateVar
-  (a, newState) <- runStateT (unwrapClbT $ eff) oldState
+  (a, newState) <- runStateT (unwrapClbT eff) oldState
   putMVar stateVar $
     -- FIXME: add new events
     -- FIXME: handle errors
@@ -287,7 +297,7 @@ instance Show BlockId where
   show = Text.unpack . B16.extractBase16 . B16.encodeBase16 . BS.fromShort . getBlockId
 
 -- | A hash of the block's contents.
-blockId :: Block -> BlockId
+blockId :: (CBOR.ToCBOR (Core.Tx (CardanoLedgerEra era))) => Block era -> BlockId
 blockId =
   BlockId
     . BS.toShort
@@ -334,7 +344,7 @@ doNothingResponderProtocol =
 is what the cardano main and testnet uses. Only applies to the Byron era.
 -}
 epochSlots :: EpochSlots
-epochSlots = EpochSlots 21600
+epochSlots = EpochSlots 21_600
 
 codecVersion :: BlockNodeToClientVersion (CardanoBlock StandardCrypto)
 codecVersion = versionMap Map.! nodeToClientVersion
@@ -392,7 +402,7 @@ stateQueryCodec ::
 stateQueryCodec = cStateQueryCodec nodeToClientCodecs
 
 toCardanoBlock ::
-  Ouroboros.Tip (CardanoBlock StandardCrypto) -> Block -> IO (CardanoBlock StandardCrypto)
+  Ouroboros.Tip (CardanoBlock StandardCrypto) -> Block ConwayEra -> IO (CardanoBlock StandardCrypto)
 toCardanoBlock Ouroboros.TipGenesis _ = error "toCardanoBlock: TipGenesis not supported"
 toCardanoBlock (Ouroboros.Tip curSlotNo _ curBlockNo) block = do
   prevHash <- generate (arbitrary :: Gen (HashHeader (OC.EraCrypto (OC.ConwayEra StandardCrypto))))
@@ -428,8 +438,8 @@ toCardanoBlock (Ouroboros.Tip curSlotNo _ curBlockNo) block = do
               , Praos.hbProtVer = bprotver bhBody
               }
           hSig = coerce bhSig
-  pure $ OC.BlockBabbage $ Shelley.mkShelleyBlock $ CL.Block (translateHeader hdr1) bdy
+  pure $ OC.BlockConway $ Shelley.mkShelleyBlock $ CL.Block (translateHeader hdr1) bdy
 
-fromCardanoBlock :: CardanoBlock StandardCrypto -> Block
-fromCardanoBlock (OC.BlockBabbage (Shelley.ShelleyBlock (CL.Block _ txSeq) _)) = map (OnChainTx . unsafeMakeValidated) . toList $ CL.fromTxSeq txSeq
+fromCardanoBlock :: CardanoBlock StandardCrypto -> Block ConwayEra
+fromCardanoBlock (OC.BlockConway (Shelley.ShelleyBlock (CL.Block _ txSeq) _)) = map (OnChainTx . unsafeMakeValidated) . toList $ CL.fromTxSeq txSeq
 fromCardanoBlock _ = []

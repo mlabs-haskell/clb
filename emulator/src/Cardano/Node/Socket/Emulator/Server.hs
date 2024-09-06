@@ -58,7 +58,7 @@ import Cardano.BM.Data.Trace (Trace)
 import Cardano.Slotting.Slot (SlotNo (..), WithOrigin (..))
 
 -- import Ledger (Block, CardanoTx (..), Slot (..))
-import Ouroboros.Consensus.Cardano.Block (CardanoBlock)
+import Ouroboros.Consensus.Cardano.Block (CardanoBlock, ConwayEra)
 import Ouroboros.Consensus.HardFork.Combinator qualified as Consensus
 import Ouroboros.Consensus.Ledger.Query (Query (..))
 import Ouroboros.Consensus.Ledger.SupportsMempool (ApplyTxErr)
@@ -129,7 +129,6 @@ import Cardano.Node.Socket.Emulator.Types (
   txSubmissionCodec,
  )
 import Clb (Block, ClbState (ClbState), ClbT, ValidationResult (..), addTxToPool, applyTx, emulatedLedgerState, unwrapClbT)
-import Clb qualified as E
 import Clb.TimeSlot (Slot)
 import Control.Monad.State (StateT (runStateT))
 
@@ -143,7 +142,7 @@ data CommandChannel = CommandChannel
      this wrapper to make sure that no data is consumed from the
      original channel.
 -}
-newtype LocalChannel = LocalChannel (TChan Block)
+newtype LocalChannel era = LocalChannel (TChan (Block era))
 
 {- | A handler used to pass around the path to the server
      and channels used for controlling the server.
@@ -162,8 +161,7 @@ data ServerHandler = ServerHandler
 data ServerCommand where
   ProcessBlock :: ServerCommand
   ModifySlot :: (Slot -> Slot) -> ServerCommand
-  -- AddTx :: (C.Tx C.ConwayEra) -> ServerCommand
-  AddTx :: (C.Tx C.BabbageEra) -> ServerCommand
+  AddTx :: (C.Tx C.ConwayEra) -> ServerCommand
 
 instance Show ServerCommand where
   show = \case
@@ -176,11 +174,12 @@ instance Show ServerCommand where
 -}
 data ServerResponse
   = -- A block was added. We are using this for synchronization.
-    BlockAdded Block
+    BlockAdded (Block C.ConwayEra)
   | SlotChanged Slot
-  deriving (Show)
 
-processBlock :: (MonadIO m) => ServerHandler -> m Block
+-- deriving (Show)
+
+processBlock :: (MonadIO m) => ServerHandler -> m (Block C.ConwayEra)
 processBlock ServerHandler {shCommandChannel} = do
   liftIO $ atomically $ writeTQueue (ccCommand shCommandChannel) ProcessBlock
   -- Wait for the server to finish processing blocks.
@@ -200,18 +199,18 @@ modifySlot f ServerHandler {shCommandChannel} = do
         SlotChanged slot -> pure slot
         _ -> retry
 
-addTx :: (MonadIO m) => ServerHandler -> C.Tx C.BabbageEra -> m ()
+addTx :: (MonadIO m) => ServerHandler -> C.Tx C.ConwayEra -> m ()
 addTx ServerHandler {shCommandChannel} tx = do
   liftIO $ atomically $ writeTQueue (ccCommand shCommandChannel) $ AddTx tx
 
 {- Create a thread that keeps the number of blocks in the channel to the maximum
    limit of K -}
-pruneChain :: (MonadIO m) => Integer -> TChan Block -> m ThreadId
+pruneChain :: (MonadIO m) => Integer -> TChan (Block era) -> m ThreadId
 pruneChain k original = do
   localChannel <- liftIO $ atomically $ cloneTChan original
   liftIO . forkIO $ go k localChannel
   where
-    go :: (MonadIO m) => Integer -> TChan Block -> m ()
+    go :: (MonadIO m) => Integer -> TChan (Block era) -> m ()
     go k' localChannel = do
       -- Wait for data on the channel
       _ <- liftIO $ atomically $ readTChan localChannel
@@ -226,8 +225,8 @@ pruneChain k original = do
 
 processChainEffects ::
   Trace IO EmulatorMsg ->
-  MVar AppState ->
-  ClbT IO a ->
+  MVar (AppState C.ConwayEra) ->
+  ClbT C.ConwayEra IO a ->
   IO a
 processChainEffects trace stateVar eff = do
   (events, result) <- runChainEffects stateVar eff
@@ -239,7 +238,7 @@ handleCommand ::
   (MonadIO m) =>
   Trace IO EmulatorMsg ->
   CommandChannel ->
-  MVar AppState ->
+  MVar (AppState C.ConwayEra) ->
   m ()
 handleCommand trace CommandChannel {ccCommand, ccResponse} mvAppState =
   liftIO $
@@ -257,7 +256,7 @@ handleCommand trace CommandChannel {ccCommand, ccResponse} mvAppState =
           writeTChan ch block
           writeTQueue ccResponse (BlockAdded block)
   where
-    process :: ClbT IO a -> IO a
+    process :: ClbT C.ConwayEra IO a -> IO a
     process = processChainEffects trace mvAppState
 
 {- | Start the server in a new thread, and return a server handler
@@ -268,7 +267,7 @@ runServerNode ::
   Trace IO EmulatorMsg ->
   FilePath ->
   Integer ->
-  AppState ->
+  AppState C.ConwayEra ->
   m ServerHandler
 runServerNode trace shSocketPath k initialState = liftIO $ do
   serverState <- newMVar initialState
@@ -285,20 +284,20 @@ runServerNode trace shSocketPath k initialState = liftIO $ do
    transition is invoked. It makes the implementation of
    state transitions easier to read. -}
 
-type ChainSyncMonad = ReaderT (MVar AppState) IO
+type ChainSyncMonad era = ReaderT (MVar (AppState era)) IO
 
-runChainSync :: MVar AppState -> ChainSyncMonad a -> IO a
+runChainSync :: MVar (AppState era) -> ChainSyncMonad era a -> IO a
 runChainSync = flip runReaderT
 
 {- The initial state of the protocol. You can move into
    requesting the next block or reset state by searching for an
    intersection. -}
 idleState ::
-  ( MonadReader (MVar AppState) m
+  ( MonadReader (MVar (AppState C.ConwayEra)) m
   , MonadIO m
   , block ~ CardanoBlock StandardCrypto
   ) =>
-  LocalChannel ->
+  LocalChannel C.ConwayEra ->
   m (ServerStIdle block (Point block) Tip m ())
 idleState channel' = do
   pure
@@ -312,11 +311,11 @@ idleState channel' = do
    or within a monad (IO, in our case) where you can wait for the
    next block (Nothing/Right branch) -}
 nextState ::
-  ( MonadReader (MVar AppState) m
+  ( MonadReader (MVar (AppState C.ConwayEra)) m
   , MonadIO m
   , block ~ CardanoBlock StandardCrypto
   ) =>
-  LocalChannel ->
+  LocalChannel C.ConwayEra ->
   m
     ( Either
         (ServerStNext block (Point block) Tip m ())
@@ -340,7 +339,7 @@ nextState localChannel@(LocalChannel channel') = do
    the client state is reset to the new offset (the Just branch)
    or to the genesis block if no intersection was found. -}
 findIntersect ::
-  ( MonadReader (MVar AppState) m
+  ( MonadReader (MVar (AppState C.ConwayEra)) m
   , MonadIO m
   , block ~ CardanoBlock StandardCrypto
   ) =>
@@ -385,11 +384,11 @@ findIntersect clientPoints = do
 
 {- This is a wrapper around the creation of a `ServerStNext` -}
 sendRollForward ::
-  ( MonadReader (MVar AppState) m
+  ( MonadReader (MVar (AppState C.ConwayEra)) m
   , MonadIO m
   , block ~ CardanoBlock StandardCrypto
   ) =>
-  LocalChannel ->
+  LocalChannel C.ConwayEra ->
   Tip -> -- tip
   block -> -- current
   m (ServerStNext block (Point block) Tip m ())
@@ -404,7 +403,7 @@ sendRollForward channel' tip' current =
    slot 0, and in idleState. This will probably change, since it
    makes more sense to start in the `StIntersect` state. -}
 chainSyncServer ::
-  ( MonadReader (MVar AppState) m
+  ( MonadReader (MVar (AppState C.ConwayEra)) m
   , MonadIO m
   , block ~ CardanoBlock StandardCrypto
   ) =>
@@ -415,15 +414,15 @@ chainSyncServer =
 {- Use a `TChan` to model a broadcast channel of which we
    clone (with potentially varying offsets) for clients. -}
 cloneChainFrom ::
-  forall m.
-  ( MonadReader (MVar AppState) m
+  forall m era.
+  ( MonadReader (MVar (AppState era)) m
   , MonadIO m
   ) =>
   Integer ->
-  m LocalChannel
+  m (LocalChannel era)
 cloneChainFrom offset = LocalChannel <$> go
   where
-    go :: m (TChan Block)
+    go :: m (TChan (Block era))
     go = do
       globalChannel <- ask >>= getChannel
       liftIO $ atomically $ do
@@ -446,8 +445,8 @@ cloneChainFrom offset = LocalChannel <$> go
    into IO. -}
 
 hoistChainSync ::
-  (MonadReader (MVar AppState) m) =>
-  ChainSyncServer block (Point block) Tip ChainSyncMonad a ->
+  (MonadReader (MVar (AppState era)) m) =>
+  ChainSyncServer block (Point block) Tip (ChainSyncMonad era) a ->
   m (ChainSyncServer block (Point block) Tip IO a)
 hoistChainSync machine = do
   internalState <- ask
@@ -462,8 +461,8 @@ hoistChainSync machine = do
       }
 
 hoistStIdle ::
-  (MonadReader (MVar AppState) m) =>
-  ServerStIdle block (Point block) Tip ChainSyncMonad a ->
+  (MonadReader (MVar (AppState era)) m) =>
+  ServerStIdle block (Point block) Tip (ChainSyncMonad era) a ->
   m (ServerStIdle block (Point block) Tip IO a)
 hoistStIdle (ServerStIdle nextState' findIntersect' done) = do
   internalState <- ask
@@ -482,8 +481,8 @@ hoistStIdle (ServerStIdle nextState' findIntersect' done) = do
       }
 
 hoistStIntersect ::
-  (MonadReader (MVar AppState) m) =>
-  ServerStIntersect block (Point block) Tip ChainSyncMonad a ->
+  (MonadReader (MVar (AppState era)) m) =>
+  ServerStIntersect block (Point block) Tip (ChainSyncMonad era) a ->
   m (ServerStIntersect block (Point block) Tip IO a)
 hoistStIntersect (SendMsgIntersectFound point tip' nextState') =
   SendMsgIntersectFound point tip' <$> hoistChainSync nextState'
@@ -491,8 +490,8 @@ hoistStIntersect (SendMsgIntersectNotFound tip' nextState') =
   SendMsgIntersectNotFound tip' <$> hoistChainSync nextState'
 
 hoistStNext ::
-  (MonadReader (MVar AppState) m) =>
-  ServerStNext block (Point block) Tip ChainSyncMonad a ->
+  (MonadReader (MVar (AppState era)) m) =>
+  ServerStNext block (Point block) Tip (ChainSyncMonad era) a ->
   m (ServerStNext block (Point block) Tip IO a)
 hoistStNext (SendMsgRollForward header tip' nextState') =
   SendMsgRollForward header tip' <$> hoistChainSync nextState'
@@ -506,7 +505,7 @@ hoistStNext (SendMsgRollBackward header tip' nextState') =
 protocolLoop ::
   (MonadIO m) =>
   FilePath ->
-  MVar AppState ->
+  MVar (AppState C.ConwayEra) ->
   m Void
 protocolLoop socketPath internalState = liftIO $ withIOManager $ \iocp -> do
   networkState <- newNetworkMutableState
@@ -533,7 +532,7 @@ protocolLoop socketPath internalState = liftIO $ withIOManager $ \iocp -> do
     $ \_ serverAsync -> wait serverAsync
 
 nodeToClientProtocols ::
-  MVar AppState ->
+  MVar (AppState C.ConwayEra) ->
   NodeToClientProtocols 'ResponderMode LocalAddress LBS.ByteString IO Void ()
 nodeToClientProtocols internalState =
   NodeToClientProtocols
@@ -544,7 +543,7 @@ nodeToClientProtocols internalState =
     }
 
 chainSync ::
-  MVar AppState ->
+  MVar (AppState C.ConwayEra) ->
   RunMiniProtocolWithMinimalCtx 'ResponderMode LocalAddress LBS.ByteString IO Void ()
 chainSync mvChainState =
   ResponderProtocolOnly $
@@ -560,7 +559,7 @@ chainSync mvChainState =
         )
 
 txSubmission ::
-  MVar AppState ->
+  MVar (AppState C.ConwayEra) ->
   RunMiniProtocolWithMinimalCtx 'ResponderMode LocalAddress LBS.ByteString IO Void ()
 txSubmission mvChainState =
   ResponderProtocolOnly $
@@ -573,7 +572,7 @@ txSubmission mvChainState =
         )
 
 stateQuery ::
-  MVar AppState ->
+  MVar (AppState era) ->
   RunMiniProtocolWithMinimalCtx 'ResponderMode LocalAddress LBS.ByteString IO Void ()
 stateQuery mvChainState =
   ResponderProtocolOnly $
@@ -599,7 +598,7 @@ pointOffset pt =
 -- Currently selects all points from the blockchain.
 getChainPoints ::
   (MonadIO m, block ~ CardanoBlock StandardCrypto) =>
-  [Block] ->
+  [Block C.ConwayEra] ->
   Slot ->
   m [Point block]
 getChainPoints chain slot = do
@@ -622,22 +621,21 @@ getChainPoints chain slot = do
 
 txSubmissionServer ::
   (block ~ CardanoBlock StandardCrypto) =>
-  MVar AppState ->
+  MVar (AppState C.ConwayEra) ->
   TxSubmission.LocalTxSubmissionServer (Shelley.GenTx block) (ApplyTxErr block) IO ()
 txSubmissionServer state =
   TxSubmission.LocalTxSubmissionServer
-    { TxSubmission.recvMsgSubmitTx = \tx -> (,txSubmissionServer state) <$> submitTx state tx
+    { TxSubmission.recvMsgSubmitTx = fmap (,txSubmissionServer state) . submitTx state
     , TxSubmission.recvMsgDone = ()
     }
 
 submitTx ::
   (block ~ CardanoBlock StandardCrypto) =>
-  MVar AppState ->
+  MVar (AppState C.ConwayEra) ->
   Shelley.GenTx block ->
   IO (TxSubmission.SubmitResult (ApplyTxErr block))
 submitTx state tx = case C.fromConsensusGenTx tx of
-  -- C.TxInMode C.ShelleyBasedEraConway shelleyTx -> do
-  C.TxInMode C.ShelleyBasedEraBabbage shelleyTx -> do
+  C.TxInMode C.ShelleyBasedEraConway shelleyTx -> do
     AppState
       (SocketEmulatorState clbState@(ClbState chainState _ _ _ _ _) _ _)
       _
@@ -670,7 +668,7 @@ submitTx state tx = case C.fromConsensusGenTx tx of
 
 stateQueryServer ::
   (block ~ CardanoBlock StandardCrypto) =>
-  MVar AppState ->
+  MVar (AppState era) ->
   StateQuery.LocalStateQueryServer block (Point block) (Query block) IO ()
 stateQueryServer state = Query.LocalStateQueryServer {Query.runLocalStateQueryServer = pure idle}
   where

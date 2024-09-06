@@ -1,5 +1,4 @@
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
@@ -56,12 +55,13 @@ import Clb.TimeSlot (
   posixTimeToUTCTime,
   scSlotLength,
  )
+import Ouroboros.Consensus.Block (GenesisWindow (..))
 import Ouroboros.Consensus.HardFork.History qualified as Ouroboros
 import PlutusLedgerApi.V1 (POSIXTime (POSIXTime, getPOSIXTime))
 
 handleQuery ::
   (block ~ CardanoBlock StandardCrypto) =>
-  MVar AppState ->
+  MVar (AppState era) ->
   Query block result ->
   IO result
 handleQuery state = \case
@@ -110,18 +110,24 @@ printError :: (MonadIO m) => String -> m a
 printError s = liftIO (print s) >> error s
 
 -- | A sensible default 'EraHistory' value for the emulator
-emulatorEraHistory :: MockConfig -> C.EraHistory
+emulatorEraHistory :: MockConfig era -> C.EraHistory
 emulatorEraHistory params = C.EraHistory (Ouroboros.mkInterpreter $ Ouroboros.summaryWithExactly list)
   where
     one =
       Ouroboros.nonEmptyHead $
         Ouroboros.getSummary $
           -- Ouroboros.neverForksSummary (pEpochSize params) (slotLength params) emulatorGenesisWindow
-          -- Ouroboros.neverForksSummary (pEpochSize params) (slotLength params) emulatorGenesisWindow
-          Ouroboros.neverForksSummary emulatorEpochSize (slotLength params)
+          Ouroboros.neverForksSummary emulatorEpochSize (slotLength params) emulatorGenesisWindow
     list = Ouroboros.Exactly $ K one :* K one :* K one :* K one :* K one :* K one :* K one :* Nil
 
+emulatorGenesisWindow :: GenesisWindow
+emulatorGenesisWindow = GenesisWindow window
+  where
+    -- A good default value for eras that never fork is
+    -- 3k/f, with k = 2160 and f = 20 (given by the Genesis team).
+    window = (3 * 2160) `div` 20
+
 -- | Calculate the cardano-ledger `SlotLength`
-slotLength :: MockConfig -> SlotLength
+slotLength :: MockConfig era -> SlotLength
 slotLength MockConfig {mockConfigSlotConfig} =
   mkSlotLength $ posixTimeToNominalDiffTime $ POSIXTime $ scSlotLength mockConfigSlotConfig

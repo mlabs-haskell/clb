@@ -15,6 +15,7 @@ module Clb.MockConfig (
   keptBlocks,
   paramsFromConfig,
   defaultTransitionConfig,
+  defaultConwayTransitionConfig,
 ) where
 
 import Cardano.Api qualified as C

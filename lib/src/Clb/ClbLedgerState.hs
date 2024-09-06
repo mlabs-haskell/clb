@@ -39,8 +39,8 @@ getEmulatorEraTx = undefined
 -- getEmulatorEraTx (CardanoTx tx C.ShelleyBasedEraBabbage) = tx
 -- getEmulatorEraTx _ = error "getEmulatorEraTx: Expected a Conway tx"
 
--- pattern CardanoEmulatorEraTx :: C.Tx C.ConwayEra -> CardanoTx
-pattern CardanoEmulatorEraTx :: C.Tx C.BabbageEra -> CardanoTx
+-- FIXME: monomorphic pattern
+pattern CardanoEmulatorEraTx :: C.Tx C.ConwayEra -> CardanoTx
 pattern CardanoEmulatorEraTx tx <- (getEmulatorEraTx -> tx)
   where
     CardanoEmulatorEraTx tx = CardanoTx tx C.shelleyBasedEra

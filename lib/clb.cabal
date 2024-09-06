@@ -53,12 +53,13 @@ library
   exposed-modules:
     Clb
     Clb.ClbLedgerState
+    Clb.Era
     Clb.MockConfig
     Clb.Params
     Clb.TimeSlot
     Clb.Tx
 
-  other-modules:   Clb.Era
+  other-modules:
   build-depends:
     , base               ^>=4.18.0
     , base16-bytestring
@@ -80,8 +81,8 @@ library
     , cardano-ledger-alonzo
     , cardano-ledger-api
     , cardano-ledger-babbage
-    , cardano-ledger-conway
     , cardano-ledger-binary
+    , cardano-ledger-conway
     , cardano-ledger-core:{cardano-ledger-core, testlib}
     , cardano-ledger-mary
     , cardano-ledger-shelley
@@ -102,6 +103,7 @@ executable smoke-test
   build-depends:
     , base
     , cardano-api:{cardano-api, internal}
+    , cardano-ledger-core
     , clb
     , prettyprinter
 
