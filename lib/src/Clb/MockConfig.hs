@@ -82,10 +82,6 @@ defaultSlotConfig =
 defaultBabbage :: MockConfig C.BabbageEra
 defaultBabbage = defaultMockConfig defaultBabbageParams defaultBabbageTransitionConfig
 
--- | Default Conwayconfig.
-defaultConway :: MockConfig C.ConwayEra
-defaultConway = defaultMockConfig defaultConwayParams defaultConwayTransitionConfig
-
 defaultBabbageTransitionConfig :: TransitionConfig C.BabbageEra
 defaultBabbageTransitionConfig =
   T.BabbageTransitionConfig $
@@ -105,6 +101,12 @@ defaultBabbageTransitionConfig =
         , uappCollateralPercentage = defaultAlonzoParams' ^. Alonzo.ppCollateralPercentageL
         , uappMaxCollateralInputs = defaultAlonzoParams' ^. Alonzo.ppMaxCollateralInputsL
         }
+
+-- TODO : Rename defaultConway
+
+-- | Default Conwayconfig.
+defaultConway :: MockConfig C.ConwayEra
+defaultConway = defaultMockConfig defaultConwayParams defaultConwayTransitionConfig
 
 defaultConwayTransitionConfig :: TransitionConfig C.ConwayEra
 defaultConwayTransitionConfig = T.ConwayTransitionConfig C.conwayGenesisDefaults defaultBabbageTransitionConfig

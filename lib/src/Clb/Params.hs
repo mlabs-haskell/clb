@@ -1,29 +1,58 @@
 module Clb.Params where
 
 import Cardano.Api (AlonzoEra, BabbageEra, ConwayEra)
-import Cardano.Api.Shelley qualified as C (BabbageEra, ConwayEra, shelleyGenesisDefaults)
-import Cardano.Ledger.Alonzo qualified as L (AlonzoEra)
+import Cardano.Api.Ledger qualified as C
+import Cardano.Api.Shelley qualified as C (BabbageEra, CardanoEra (AlonzoEra), ConwayEra, NetworkMagic (NetworkMagic), ShelleyGenesis (sgNetworkMagic, sgProtocolParams, sgSystemStart), alonzoGenesisDefaults, conwayGenesisDefaults, shelleyGenesisDefaults)
 import Cardano.Ledger.Alonzo.Core qualified as L (CoinPerWord (CoinPerWord))
 import Cardano.Ledger.Alonzo.PParams qualified as Alonzo
 import Cardano.Ledger.Alonzo.Scripts qualified as Alonzo
+import Cardano.Ledger.Api.Era qualified as L
+import Cardano.Ledger.Api.Transition qualified as L
 import Cardano.Ledger.Babbage.PParams qualified as Babbage
-import Cardano.Ledger.Babbage.Transition qualified as L
 import Cardano.Ledger.BaseTypes qualified as L
 import Cardano.Ledger.Coin qualified as L
 import Cardano.Ledger.Conway.PParams qualified as Conway
 import Cardano.Ledger.Core qualified as L
-import Cardano.Ledger.Crypto qualified as L (StandardCrypto)
 import Cardano.Ledger.Plutus.Language qualified as Plutus
-import Cardano.Ledger.Shelley.Genesis qualified as L (ShelleyGenesis)
 import Clb.Era (CardanoLedgerEra)
+import Clb.TimeSlot (beginningOfTime, posixTimeToUTCTime)
+import Control.Lens ((.~))
 import Data.Coerce (coerce)
 import Data.Either (fromRight)
+import Data.Function ((&))
 import Data.Functor.Identity (Identity)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromJust)
+import PlutusLedgerApi.V1 (POSIXTime (POSIXTime))
 import Test.Cardano.Ledger.Plutus qualified as LT (testingCostModelV3)
 
 type PParams era = L.PParams (CardanoLedgerEra era)
+
+-- Shelley
+
+emulatorProtocolMajorVersion :: L.Version
+emulatorProtocolMajorVersion = L.natVersion @9
+
+emulatorShelleyGenesisDefaults :: C.ShelleyGenesis C.StandardCrypto
+emulatorShelleyGenesisDefaults =
+  C.shelleyGenesisDefaults
+    { -- TODO : Check if modifying these fields is necessary
+      C.sgNetworkMagic = case testNetworkMagic of C.NetworkMagic nm -> nm
+    , C.sgSystemStart = posixTimeToUTCTime $ POSIXTime beginningOfTime
+    , C.sgProtocolParams =
+        C.sgProtocolParams C.shelleyGenesisDefaults
+          & L.ppProtocolVersionL
+            .~ L.ProtVer emulatorProtocolMajorVersion 0
+          & L.ppMinFeeBL
+            .~ L.Coin 155_381
+          & L.ppMinFeeAL
+            .~ L.Coin 44
+          & L.ppKeyDepositL
+            .~ L.Coin 2_000_000
+    }
+  where
+    testNetworkMagic :: C.NetworkMagic
+    testNetworkMagic = C.NetworkMagic 1097911063
 
 -- Alonzo
 
@@ -64,6 +93,15 @@ defaultAlonzoParams' =
         }
    in
     coerce app
+
+{- | Some reasonable starting defaults for constructing a 'AlonzoGenesis'.
+Based on https://github.com/IntersectMBO/cardano-node/blob/master/cardano-testnet/src/Testnet/Defaults.hs
+The era determines Plutus V2 cost model parameters:
+* Conway: 185
+* <= Babbage: 175
+-}
+emulatorAlonzoGenesisDefaults :: C.AlonzoGenesis
+emulatorAlonzoGenesisDefaults = C.alonzoGenesisDefaults C.AlonzoEra
 
 rational :: (L.BoundedRational r) => Rational -> r
 rational = fromJust . L.boundRational
@@ -154,12 +192,18 @@ defaultConwayParams =
               L.ProtVer {pvMajor = L.eraProtVerHigh @(CardanoLedgerEra C.ConwayEra), pvMinor = 0}
           }
 
+emulatorConwayGenesisDefaults :: C.ConwayGenesis C.StandardCrypto
+emulatorConwayGenesisDefaults = C.conwayGenesisDefaults
+
 genesisDefaultsFromParams :: L.ShelleyGenesis L.StandardCrypto
 genesisDefaultsFromParams = C.shelleyGenesisDefaults -- FIXME:
 
--- | A sensible default 'EpochSize' value for the emulator
-emulatorEpochSize :: L.EpochSize
-emulatorEpochSize = L.EpochSize 432000
-
 -- Transition Config
 type TransitionConfig era = L.TransitionConfig (CardanoLedgerEra era)
+
+defaultTransitionConfig :: TransitionConfig ConwayEra
+defaultTransitionConfig =
+  L.mkLatestTransitionConfig
+    emulatorShelleyGenesisDefaults
+    emulatorAlonzoGenesisDefaults
+    emulatorConwayGenesisDefaults

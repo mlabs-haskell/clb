@@ -8,6 +8,8 @@ module Clb.TimeSlot (
   Slot (..),
   slotToBeginPOSIXTime,
   currentSlot,
+  emulatorEpochSize,
+  beginningOfTime,
 ) where
 
 import PlutusTx.Prelude hiding (Eq, (<$>))
@@ -22,10 +24,9 @@ import PlutusLedgerApi.V1.Time (POSIXTime (POSIXTime, getPOSIXTime))
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prelude qualified as Haskell
 
+import Cardano.Ledger.Slot qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo, fixedEpochInfo)
 import Cardano.Slotting.Time (slotLengthFromMillisec)
-
-import Clb.Params (emulatorEpochSize)
 
 {- | Datatype to configure the length (ms) of one slot and the beginning of the
  first slot.
@@ -111,3 +112,16 @@ posixTimeToEnclosingSlot SlotConfig {scSlotLength, scSlotZeroTime} (POSIXTime t)
   let timePassed = t - getPOSIXTime scSlotZeroTime
       slotsPassed = divide timePassed scSlotLength
    in Slot slotsPassed
+
+{-# INLINEABLE beginningOfTime #-}
+
+{- | 'beginningOfTime' corresponds to the Shelley launch date
+(2020-07-29T21:44:51Z) which is 1596059091000 in POSIX time
+(number of milliseconds since 1970-01-01T00:00:00Z).
+-}
+beginningOfTime :: Integer
+beginningOfTime = 1596059091000
+
+-- | A sensible default 'EpochSize' value for the emulator
+emulatorEpochSize :: L.EpochSize
+emulatorEpochSize = L.EpochSize 432000

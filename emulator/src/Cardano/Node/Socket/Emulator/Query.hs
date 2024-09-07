@@ -48,9 +48,9 @@ import Cardano.Node.Socket.Emulator.Types (
  )
 import Cardano.Slotting.Time (SlotLength, mkSlotLength)
 import Clb.MockConfig (MockConfig (..))
-import Clb.Params (emulatorEpochSize)
 import Clb.TimeSlot (
   SlotConfig (scSlotZeroTime),
+  emulatorEpochSize,
   posixTimeToNominalDiffTime,
   posixTimeToUTCTime,
   scSlotLength,
