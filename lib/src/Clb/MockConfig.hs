@@ -14,8 +14,8 @@ module Clb.MockConfig (
   forceLimits,
   keptBlocks,
   paramsFromConfig,
-  defaultTransitionConfig,
   defaultConwayTransitionConfig,
+  defaultBabbageTransitionConfig,
 ) where
 
 import Cardano.Api qualified as C
@@ -80,14 +80,14 @@ defaultSlotConfig =
  FIXME: remove rest of `Babbage` naming distinction (not applicable anymore)
 -}
 defaultBabbage :: MockConfig C.BabbageEra
-defaultBabbage = defaultMockConfig defaultBabbageParams defaultTransitionConfig
+defaultBabbage = defaultMockConfig defaultBabbageParams defaultBabbageTransitionConfig
 
 -- | Default Conwayconfig.
 defaultConway :: MockConfig C.ConwayEra
 defaultConway = defaultMockConfig defaultConwayParams defaultConwayTransitionConfig
 
-defaultTransitionConfig :: TransitionConfig C.BabbageEra
-defaultTransitionConfig =
+defaultBabbageTransitionConfig :: TransitionConfig C.BabbageEra
+defaultBabbageTransitionConfig =
   T.BabbageTransitionConfig $
     T.AlonzoTransitionConfig (Alonzo.AlonzoGenesisWrapper udefaultAlonzoParams') $
       T.MaryTransitionConfig $
@@ -106,28 +106,8 @@ defaultTransitionConfig =
         , uappMaxCollateralInputs = defaultAlonzoParams' ^. Alonzo.ppMaxCollateralInputsL
         }
 
--- FIXME: base on Babbage
 defaultConwayTransitionConfig :: TransitionConfig C.ConwayEra
-defaultConwayTransitionConfig =
-  -- FIXME: undefined
-  T.ConwayTransitionConfig undefined $
-    T.BabbageTransitionConfig $
-      T.AlonzoTransitionConfig (Alonzo.AlonzoGenesisWrapper udefaultAlonzoParams') $
-        T.MaryTransitionConfig $
-          T.AllegraTransitionConfig $
-            T.mkShelleyTransitionConfig C.shelleyGenesisDefaults
-  where
-    udefaultAlonzoParams' =
-      L.UpgradeAlonzoPParams
-        { uappCoinsPerUTxOWord = defaultAlonzoParams' ^. Alonzo.ppCoinsPerUTxOWordL
-        , uappCostModels = defaultAlonzoParams' ^. Alonzo.ppCostModelsL
-        , uappPrices = defaultAlonzoParams' ^. Alonzo.ppPricesL
-        , uappMaxTxExUnits = defaultAlonzoParams' ^. Alonzo.ppMaxTxExUnitsL
-        , uappMaxBlockExUnits = defaultAlonzoParams' ^. Alonzo.ppMaxBlockExUnitsL
-        , uappMaxValSize = defaultAlonzoParams' ^. Alonzo.ppMaxValSizeL
-        , uappCollateralPercentage = defaultAlonzoParams' ^. Alonzo.ppCollateralPercentageL
-        , uappMaxCollateralInputs = defaultAlonzoParams' ^. Alonzo.ppMaxCollateralInputsL
-        }
+defaultConwayTransitionConfig = T.ConwayTransitionConfig C.conwayGenesisDefaults defaultBabbageTransitionConfig
 
 -- | Default blockchain config.
 defaultMockConfig :: PParams era -> TransitionConfig era -> MockConfig era

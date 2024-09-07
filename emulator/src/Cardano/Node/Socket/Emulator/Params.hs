@@ -6,7 +6,7 @@ import Cardano.Ledger.Api.Transition qualified as L
 import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Node.Socket.Emulator.Types
 import Clb (MockConfig, defaultBabbage)
-import Clb.MockConfig (defaultConwayTransitionConfig, defaultTransitionConfig, paramsFromConfig)
+import Clb.MockConfig (defaultConwayTransitionConfig, paramsFromConfig)
 import Data.Aeson (FromJSON, eitherDecode)
 import Data.ByteString.Lazy qualified as BSL
 
