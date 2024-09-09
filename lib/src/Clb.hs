@@ -32,9 +32,12 @@ module Clb (
   Block,
 
   -- * Querying
+  getClbConfig,
   getCurrentSlot,
+  getUtxosAt,
   getUtxosAtState,
   getEpochInfo,
+  getGlobals,
 
   -- * Working with logs
   LogEntry (..),
@@ -117,6 +120,7 @@ import Data.Foldable (toList)
 import Data.Function (on)
 import Data.List
 import Data.Map qualified as M
+import Data.Map qualified as Map
 import Data.Maybe (catMaybes)
 import Data.Sequence (Seq (..))
 import Data.Sequence qualified as Seq
@@ -297,6 +301,9 @@ fromLog (Log s) = toList s
 -- Actions in Clb monad
 --------------------------------------------------------------------------------
 
+getClbConfig :: (Monad m) => ClbT era m (ClbConfig era)
+getClbConfig = gets _mockConfig
+
 getCurrentSlot :: (Monad m) => ClbT era m C.SlotNo
 getCurrentSlot = gets (L.ledgerSlotNo . _ledgerEnv . _emulatedLedgerState)
 
@@ -323,6 +330,14 @@ logFail res = do
 -- | Insert event to log
 appendLog :: Slot -> a -> Log a -> Log a
 appendLog slot val (Log xs) = Log (xs Seq.|> (slot, val))
+
+getUtxosAt ::
+  (Monad m, Core.EraTxOut (CardanoLedgerEra era)) =>
+  L.Addr (L.EraCrypto (CardanoLedgerEra era)) -> ClbT era m (L.UTxO (CardanoLedgerEra era))
+getUtxosAt addr = do
+  allUTxOs <- gets getUtxosAtState
+  let hasAddr txOut = txOut ^. L.addrTxOutL == addr
+  pure . L.UTxO $ Map.filter hasAddr (L.unUTxO allUTxOs)
 
 getUtxosAtState :: ClbState era -> L.UTxO (CardanoLedgerEra era)
 getUtxosAtState state =

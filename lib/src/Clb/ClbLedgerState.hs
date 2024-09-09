@@ -33,7 +33,6 @@ instance Show (CardanoTx era) where
 getEmulatorEraTx :: CardanoTx era -> C.Tx era
 getEmulatorEraTx (CardanoTx tx _) = tx
 
--- FIXME: monomorphic pattern
 pattern CardanoEmulatorEraTx :: (C.IsShelleyBasedEra era) => C.Tx era -> CardanoTx era
 pattern CardanoEmulatorEraTx tx <- (getEmulatorEraTx -> tx)
   where

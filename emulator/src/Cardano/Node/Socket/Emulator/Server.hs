@@ -218,8 +218,8 @@ pruneChain k original = do
         then {- When the counter reaches zero, there are K blocks in the
                 original channel and we start to remove the oldest stored
                 block by reading it. -}
-        do
-          liftIO $ atomically (readTChan original) >> go 0 localChannel
+          do
+            liftIO $ atomically (readTChan original) >> go 0 localChannel
         else do
           go (k' - 1) localChannel
 
@@ -572,7 +572,8 @@ txSubmission mvChainState =
         )
 
 stateQuery ::
-  MVar (AppState era) ->
+  -- FIX : MVar (AppState era) - After fixing stateQueryServer
+  MVar (AppState C.ConwayEra) ->
   RunMiniProtocolWithMinimalCtx 'ResponderMode LocalAddress LBS.ByteString IO Void ()
 stateQuery mvChainState =
   ResponderProtocolOnly $
@@ -668,7 +669,8 @@ submitTx state tx = case C.fromConsensusGenTx tx of
 
 stateQueryServer ::
   (block ~ CardanoBlock StandardCrypto) =>
-  MVar (AppState era) ->
+  -- FIX : MVar (AppState era) - after fixing handleQuery @Cardano.Node.Socket.Emulator.Query
+  MVar (AppState C.ConwayEra) ->
   StateQuery.LocalStateQueryServer block (Point block) (Query block) IO ()
 stateQueryServer state = Query.LocalStateQueryServer {Query.runLocalStateQueryServer = pure idle}
   where
