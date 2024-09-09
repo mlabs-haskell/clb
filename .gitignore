@@ -3,6 +3,7 @@
 dist-newstyle/
 # Local configuration files
 cabal.project.local*
+# GHC environments
 .ghc.environment.*
 
 # nix-build results
@@ -27,4 +28,4 @@ Thumbs.db
 TODO.md
 
 # pre-commit hooks
-/.pre-commit-config.yaml
+.pre-commit-config.yaml
