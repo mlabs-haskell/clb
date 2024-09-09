@@ -21,26 +21,20 @@ is just a list of validated transactions.
 type EmulatorBlock era = [OnChainTx era]
 
 -- | mempool
-type TxPool = [CardanoTx]
+type TxPool era = [CardanoTx era]
 
 -- | Cardano tx from any era.
-data CardanoTx where
-  CardanoTx :: C.Tx era -> C.ShelleyBasedEra era -> CardanoTx
+data CardanoTx era where
+  CardanoTx :: C.Tx era -> C.ShelleyBasedEra era -> CardanoTx era
 
-instance Show CardanoTx where
+instance Show (CardanoTx era) where
   show = const "CardanoTx"
 
--- FIXME:
--- getEmulatorEraTx :: CardanoTx -> C.Tx C.ConwayEra
-getEmulatorEraTx :: CardanoTx -> C.Tx era
-getEmulatorEraTx = undefined
-
--- getEmulatorEraTx (CardanoTx tx C.ShelleyBasedEraConway) = tx
--- getEmulatorEraTx (CardanoTx tx C.ShelleyBasedEraBabbage) = tx
--- getEmulatorEraTx _ = error "getEmulatorEraTx: Expected a Conway tx"
+getEmulatorEraTx :: CardanoTx era -> C.Tx era
+getEmulatorEraTx (CardanoTx tx _) = tx
 
 -- FIXME: monomorphic pattern
-pattern CardanoEmulatorEraTx :: C.Tx C.ConwayEra -> CardanoTx
+pattern CardanoEmulatorEraTx :: (C.IsShelleyBasedEra era) => C.Tx era -> CardanoTx era
 pattern CardanoEmulatorEraTx tx <- (getEmulatorEraTx -> tx)
   where
     CardanoEmulatorEraTx tx = CardanoTx tx C.shelleyBasedEra

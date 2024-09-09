@@ -173,7 +173,7 @@ data ClbState era = ClbState
     _mockDatums :: !(M.Map P.DatumHash P.Datum)
   , _mockInfo :: !(Log LogEntry)
   , _mockFails :: !(Log FailReason)
-  , _txPool :: !TxPool
+  , _txPool :: !(TxPool era)
   }
 
 -- deriving stock (Show)
@@ -564,5 +564,5 @@ commitTx (Success newState vtx) = do
 -- TODO: Should we log ValidationError in Fail !(Core.Tx EmulatorEra) !ValidationError ?
 commitTx (Fail _ _) = pure Nothing
 
-addTxToPool :: CardanoTx -> ClbState era -> ClbState era
+addTxToPool :: CardanoTx era -> ClbState era -> ClbState era
 addTxToPool tx = over txPool (tx :)
