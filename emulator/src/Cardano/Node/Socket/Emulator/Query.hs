@@ -47,7 +47,7 @@ import Cardano.Node.Socket.Emulator.Types (
   -- runChainEffects,
  )
 import Cardano.Slotting.Time (SlotLength, mkSlotLength)
-import Clb.MockConfig (MockConfig (..))
+import Clb.MockConfig (ClbConfig (..))
 import Clb.TimeSlot (
   SlotConfig (scSlotZeroTime),
   emulatorEpochSize,
@@ -77,7 +77,7 @@ handleQuery state = \case
     pure $ Consensus.EraIndex (S (S (S (S (S (S (Z (K ())))))))) -- ConwayEra
   BlockQuery q -> printError $ "Unimplemented BlockQuery received: " ++ show q
   GetSystemStart -> do
-    AppState _ _ MockConfig {mockConfigSlotConfig} <- readMVar state
+    AppState _ _ ClbConfig {mockConfigSlotConfig} <- readMVar state
     pure $ C.SystemStart $ posixTimeToUTCTime $ scSlotZeroTime mockConfigSlotConfig
   GetChainBlockNo -> do
     tip <- getTip state
@@ -110,7 +110,7 @@ printError :: (MonadIO m) => String -> m a
 printError s = liftIO (print s) >> error s
 
 -- | A sensible default 'EraHistory' value for the emulator
-emulatorEraHistory :: MockConfig era -> C.EraHistory
+emulatorEraHistory :: ClbConfig era -> C.EraHistory
 emulatorEraHistory params = C.EraHistory (Ouroboros.mkInterpreter $ Ouroboros.summaryWithExactly list)
   where
     one =
@@ -128,6 +128,6 @@ emulatorGenesisWindow = GenesisWindow window
     window = (3 * 2160) `div` 20
 
 -- | Calculate the cardano-ledger `SlotLength`
-slotLength :: MockConfig era -> SlotLength
-slotLength MockConfig {mockConfigSlotConfig} =
+slotLength :: ClbConfig era -> SlotLength
+slotLength ClbConfig {mockConfigSlotConfig} =
   mkSlotLength $ posixTimeToNominalDiffTime $ POSIXTime $ scSlotLength mockConfigSlotConfig

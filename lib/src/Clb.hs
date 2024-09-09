@@ -53,7 +53,7 @@ module Clb (
   ppLog,
 
   -- * Emulator configuration
-  MockConfig (..),
+  ClbConfig (..),
   SlotConfig (..),
 
   -- * Protocol parameters
@@ -92,7 +92,7 @@ import Cardano.Ledger.TxIn qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo)
 import Clb.ClbLedgerState (CardanoTx, EmulatedLedgerState (..), TxPool, currentBlock, getEmulatorEraTx, initialState, memPoolState, setSlot, setUtxo)
 import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra, maryBasedEra)
-import Clb.MockConfig (MockConfig (..))
+import Clb.MockConfig (ClbConfig (..))
 import Clb.MockConfig qualified as X (defaultBabbage, defaultConway)
 import Clb.Params (PParams, emulatorShelleyGenesisDefaults)
 import Clb.TimeSlot (Slot (..), SlotConfig (..), slotConfigToEpochInfo)
@@ -168,7 +168,7 @@ FIXME: remove non-state parts like MockConfig and Log (?)
 -}
 data ClbState era = ClbState
   { _emulatedLedgerState :: !(EmulatedLedgerState era)
-  , _mockConfig :: !(MockConfig era)
+  , _mockConfig :: !(ClbConfig era)
   , -- FIXME: rename, this is non-inline dataums cache
     _mockDatums :: !(M.Map P.DatumHash P.Datum)
   , _mockInfo :: !(Log LogEntry)
@@ -218,12 +218,12 @@ runClb (ClbT act) = runState act
 initClb ::
   forall era.
   (IsCardanoLedgerEra era) =>
-  MockConfig era ->
+  ClbConfig era ->
   Api.Value ->
   Api.Value ->
   ClbState era
 initClb
-  cfg@MockConfig {mockConfigProtocol = pparams}
+  cfg@ClbConfig {mockConfigProtocol = pparams}
   _initVal
   walletFunds =
     ClbState

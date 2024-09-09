@@ -92,7 +92,7 @@ import Cardano.Binary qualified as CBOR
 import Cardano.Api.Address (AddressInEra)
 import Cardano.Protocol.TPraos.BHeader
 import Cardano.Protocol.TPraos.OCert (KESPeriod (..))
-import Clb (Block, ClbState, ClbT (unwrapClbT), MockConfig, OnChainTx (..), emulatedLedgerState, initClb, unwrapClbT)
+import Clb (Block, ClbConfig, ClbState, ClbT (unwrapClbT), OnChainTx (..), emulatedLedgerState, initClb, unwrapClbT)
 import Clb.ClbLedgerState (currentBlock, getSlot, ledgerEnv)
 import Test.Cardano.Ledger.Common
 import Test.Cardano.Ledger.Shelley.Constants (defaultConstants)
@@ -182,7 +182,7 @@ data AppState era = AppState
   -- ^ blockchain state
   , _emulatorLogs :: EmulatorLogs
   -- ^ history of all log messages
-  , _emulatorParams :: MockConfig era
+  , _emulatorParams :: ClbConfig era
   }
 
 -- deriving (Show)
@@ -216,7 +216,7 @@ initialChainState ::
   ( MonadIO m
   , IsCardanoLedgerEra era
   ) =>
-  MockConfig era ->
+  ClbConfig era ->
   m (SocketEmulatorState era)
 initialChainState params =
   fromEmulatorChainState $
