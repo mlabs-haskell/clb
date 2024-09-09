@@ -33,11 +33,16 @@ type PParams era = L.PParams (CardanoLedgerEra era)
 emulatorProtocolMajorVersion :: L.Version
 emulatorProtocolMajorVersion = L.natVersion @9
 
+{- | Some reasonable starting defaults for constructing a 'ShelleyGenesis'.
+TODO : Override the following fields:
+    * 'sgGenDelegs' to have some initial nodes
+    * 'sgInitialFunds' to have any money in the system
+    * 'sgMaxLovelaceSupply' must be at least the sum of the 'sgInitialFunds'
+-}
 emulatorShelleyGenesisDefaults :: C.ShelleyGenesis C.StandardCrypto
 emulatorShelleyGenesisDefaults =
   C.shelleyGenesisDefaults
-    { -- TODO : Check if modifying these fields is necessary
-      C.sgNetworkMagic = case testNetworkMagic of C.NetworkMagic nm -> nm
+    { C.sgNetworkMagic = case testNetworkMagic of C.NetworkMagic nm -> nm
     , C.sgSystemStart = posixTimeToUTCTime $ POSIXTime beginningOfTime
     , C.sgProtocolParams =
         C.sgProtocolParams C.shelleyGenesisDefaults
@@ -194,9 +199,6 @@ defaultConwayParams =
 
 emulatorConwayGenesisDefaults :: C.ConwayGenesis C.StandardCrypto
 emulatorConwayGenesisDefaults = C.conwayGenesisDefaults
-
-genesisDefaultsFromParams :: L.ShelleyGenesis L.StandardCrypto
-genesisDefaultsFromParams = C.shelleyGenesisDefaults -- FIXME:
 
 -- Transition Config
 type TransitionConfig era = L.TransitionConfig (CardanoLedgerEra era)

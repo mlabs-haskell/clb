@@ -94,18 +94,17 @@ import Clb.ClbLedgerState (CardanoTx, EmulatedLedgerState (..), TxPool, currentB
 import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra, maryBasedEra)
 import Clb.MockConfig (MockConfig (..))
 import Clb.MockConfig qualified as X (defaultBabbage, defaultConway)
-import Clb.Params (PParams, genesisDefaultsFromParams)
+import Clb.Params (PParams, emulatorShelleyGenesisDefaults)
 import Clb.TimeSlot (Slot (..), SlotConfig (..), slotConfigToEpochInfo)
 import Clb.TimeSlot qualified as TimeSlot
 import Clb.Tx (Block, OnChainTx (..))
 import Control.Arrow (ArrowChoice (..))
-import Control.Lens (makeLenses, over, (&), (.~), (^.))
+import Control.Lens (makeLenses, over, view, (&), (.~), (^.))
 import Control.Monad (when)
-import Control.Monad.Identity (Identity (runIdentity))
+import Control.Monad.Identity (Identity)
 import Control.Monad.Reader (runReader)
 import Control.Monad.State (MonadState (get), StateT, gets, modify, modify', put, runState)
 import Control.Monad.Trans (MonadIO, MonadTrans)
-import Control.Monad.Trans.Maybe (MaybeT (runMaybeT))
 import Control.State.Transition (SingEP (..), globalAssertionPolicy)
 import Control.State.Transition.Extended (
   ApplySTSOpts (..),
@@ -118,7 +117,7 @@ import Data.Foldable (toList)
 import Data.Function (on)
 import Data.List
 import Data.Map qualified as M
-import Data.Maybe (catMaybes, fromJust)
+import Data.Maybe (catMaybes)
 import Data.Sequence (Seq (..))
 import Data.Sequence qualified as Seq
 import Data.Text (Text)
@@ -369,19 +368,11 @@ getEpochInfo =
 getGlobals :: forall era m. (Monad m, IsCardanoLedgerEra era) => ClbT era m Globals
 getGlobals = do
   pparams <- gets (mockConfigProtocol . _mockConfig)
-  -- FIXME: fromJust
-  let majorVer =
-        fromJust $
-          runIdentity $
-            runMaybeT @Identity $
-              L.mkVersion $
-                fst $
-                  C.protocolParamProtocolVersion $
-                    C.fromLedgerPParams (C.shelleyBasedEra @era) pparams
+  let majorVer = L.pvMajor $ view L.ppProtocolVersionL pparams
   epochInfo <- getEpochInfo
   pure $
     L.mkShelleyGlobals
-      genesisDefaultsFromParams
+      emulatorShelleyGenesisDefaults
       epochInfo
       majorVer
 
