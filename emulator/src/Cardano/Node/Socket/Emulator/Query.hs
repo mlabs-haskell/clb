@@ -1,12 +1,16 @@
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeOperators #-}
 
 module Cardano.Node.Socket.Emulator.Query (handleQuery) where
 
 import Cardano.Api qualified as C
+import Cardano.Api.Eras qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Api.Transition qualified as L
 import Cardano.Ledger.BaseTypes (epochInfo)
+import Cardano.Ledger.Shelley.LedgerState qualified as L
+import Cardano.Ledger.UTxO qualified as L
 import Cardano.Node.Socket.Emulator.Types (
   AppState (..),
   getTip,
@@ -15,7 +19,8 @@ import Cardano.Node.Socket.Emulator.Types (
 import Cardano.Slotting.EpochInfo (epochInfoEpoch)
 import Cardano.Slotting.Slot (WithOrigin (..))
 import Cardano.Slotting.Time (SlotLength, mkSlotLength)
-import Clb (ClbT, getClbConfig, getCurrentSlot, getGlobals, getUtxosAt, txOutRefAt)
+import Clb (ClbT, emulatedLedgerState, getClbConfig, getCurrentSlot, getGlobals, getUtxosAt, txOutRefAt)
+import Clb.ClbLedgerState (memPoolState)
 import Clb.MockConfig (ClbConfig (..))
 import Clb.TimeSlot (
   SlotConfig (scSlotZeroTime),
@@ -25,9 +30,10 @@ import Clb.TimeSlot (
   scSlotLength,
  )
 import Control.Concurrent (MVar, readMVar)
-import Control.Lens (alaf, view)
+import Control.Lens (alaf, use, view)
 import Control.Monad (foldM)
 import Control.Monad.IO.Class (MonadIO (..))
+import Data.Map qualified as Map
 import Data.Monoid (Ap (Ap))
 import Data.SOP (K (K))
 import Data.SOP.Counting qualified as Ouroboros
@@ -90,8 +96,7 @@ queryIfCurrentConway = \case
       Right epoch -> pure epoch
   GetStakePools -> pure mempty
   GetUTxOByAddress addrs -> let f b addr = (b <>) <$> getUtxosAt addr in foldM f mempty addrs
-  -- TODO :
-  -- GetUTxOByTxIn txIns -> fromPlutusIndex <$> E.utxosAtTxIns (Set.map C.fromShelleyTxIn txIns)
+  GetUTxOByTxIn txIns -> C.toLedgerUTxO C.ShelleyBasedEraConway <$> utxosAtTxIns (Set.map C.fromShelleyTxIn txIns)
   q -> printError $ "Unimplemented BlockQuery(QueryIfCurrentConway) received: " ++ show q
 
 printError :: (MonadIO m) => String -> m a
@@ -119,3 +124,22 @@ emulatorGenesisWindow = GenesisWindow window
 slotLength :: ClbConfig era -> SlotLength
 slotLength ClbConfig {clbConfigSlotConfig} =
   mkSlotLength $ posixTimeToNominalDiffTime $ POSIXTime $ scSlotLength clbConfigSlotConfig
+
+-- Helper Functions
+
+deriving newtype instance Semigroup (C.UTxO era)
+deriving newtype instance Monoid (C.UTxO era)
+
+-- | Find an unspent transaction output (using the Ledger type) by the 'TxIn' that spends it.
+lookupUTxO :: C.TxIn -> L.UTxO (C.CardanoLedgerEra C.ConwayEra) -> Maybe (C.TxOut C.CtxUTxO C.ConwayEra)
+lookupUTxO i index = C.fromShelleyTxOut C.ShelleyBasedEraConway <$> Map.lookup (C.toShelleyTxIn i) (L.unUTxO index)
+
+-- | Create an index with a single UTxO.
+singletonUTxO :: C.TxIn -> C.TxOut C.CtxUTxO C.ConwayEra -> C.UTxO C.ConwayEra
+singletonUTxO txIn txOut = C.UTxO $ Map.singleton txIn txOut
+
+-- | Query the unspent transaction outputs at the given transaction inputs.
+utxosAtTxIns :: (Monad m, Foldable f) => f C.TxIn -> ClbT C.ConwayEra m (C.UTxO C.ConwayEra)
+utxosAtTxIns txIns = do
+  idx <- use (emulatedLedgerState . memPoolState . L.lsUTxOStateL . L.utxosUtxoL)
+  pure $ foldMap (\txIn -> maybe mempty (singletonUTxO txIn) $ lookupUTxO txIn idx) txIns
