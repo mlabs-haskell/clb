@@ -214,12 +214,12 @@ pruneChain k original = do
     go k' localChannel = do
       -- Wait for data on the channel
       _ <- liftIO $ atomically $ readTChan localChannel
-      if k' == 0
-        then {- When the counter reaches zero, there are K blocks in the
+      {- When the counter reaches zero, there are K blocks in the
                 original channel and we start to remove the oldest stored
                 block by reading it. -}
-          do
-            liftIO $ atomically (readTChan original) >> go 0 localChannel
+      if k' == 0
+        then do
+          liftIO $ atomically (readTChan original) >> go 0 localChannel
         else do
           go (k' - 1) localChannel
 
