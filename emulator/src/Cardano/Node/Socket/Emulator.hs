@@ -35,8 +35,8 @@ import Data.Time.Units (Millisecond)
 -- import Ledger.CardanoWallet (knownAddresses)
 -- import Ledger.Value.CardanoAPI qualified as CardanoAPI
 
-import Clb (SlotConfig (..), clbConfigSlotConfig, defaultBabbage)
-import Clb.MockConfig (keptBlocks)
+import Clb.MockConfig (ClbConfig (clbConfigSlotConfig), keptBlocks)
+import Clb.TimeSlot (SlotConfig (SlotConfig, scSlotLength, scSlotZeroTime))
 import Plutus.Monitoring.Util qualified as LM
 import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty)
 import Prettyprinter.Render.Text (renderStrict)

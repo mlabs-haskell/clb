@@ -14,7 +14,7 @@ import Cardano.Ledger.Coin qualified as L
 import Cardano.Ledger.Conway.PParams qualified as Conway
 import Cardano.Ledger.Core qualified as L
 import Cardano.Ledger.Plutus.Language qualified as Plutus
-import Clb.Era (CardanoLedgerEra)
+import Clb.Era (CardanoLedgerEra, DefaultEmulatorEra)
 import Clb.TimeSlot (beginningOfTime, posixTimeToUTCTime)
 import Control.Lens ((.~))
 import Data.Coerce (coerce)
@@ -203,7 +203,7 @@ emulatorConwayGenesisDefaults = C.conwayGenesisDefaults
 -- Transition Config
 type TransitionConfig era = L.TransitionConfig (CardanoLedgerEra era)
 
-defaultTransitionConfig :: TransitionConfig ConwayEra
+defaultTransitionConfig :: TransitionConfig DefaultEmulatorEra
 defaultTransitionConfig =
   L.mkLatestTransitionConfig
     emulatorShelleyGenesisDefaults

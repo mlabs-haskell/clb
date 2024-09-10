@@ -2,8 +2,8 @@
 
 module Clb (
   -- * Parameters
-  X.defaultBabbage,
-  X.defaultConway,
+  X.defaultBabbageClbConfig,
+  X.defaultConwayClbConfig,
 
   -- * CLB Monad
   Clb,
@@ -96,7 +96,7 @@ import Cardano.Slotting.EpochInfo (EpochInfo)
 import Clb.ClbLedgerState (CardanoTx, EmulatedLedgerState (..), TxPool, currentBlock, getEmulatorEraTx, initialState, memPoolState, setSlot, setUtxo)
 import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra, maryBasedEra)
 import Clb.MockConfig (ClbConfig (..))
-import Clb.MockConfig qualified as X (defaultBabbage, defaultConway)
+import Clb.MockConfig qualified as X (defaultBabbageClbConfig, defaultConwayClbConfig)
 import Clb.Params (PParams, emulatorShelleyGenesisDefaults)
 import Clb.TimeSlot (Slot (..), SlotConfig (..), slotConfigToEpochInfo)
 import Clb.TimeSlot qualified as TimeSlot
@@ -577,8 +577,14 @@ commitTx (Success newState vtx) = do
   let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
   put $ state {_emulatedLedgerState = newState, _mockDatums = M.union _mockDatums txDatums}
   pure $ Just vtx
--- TODO: Should we log ValidationError in Fail !(Core.Tx EmulatorEra) !ValidationError ?
-commitTx (Fail _ _) = pure Nothing
+commitTx (Fail _tx err) = do
+  logError $
+    "Transaction Failed: "
+      <> show err
+  -- TODO: Should we include transaction details ?
+  -- <> " - Transaction Details: "
+  -- <> show tx
+  pure Nothing
 
 addTxToPool :: CardanoTx era -> ClbState era -> ClbState era
 addTxToPool tx = over txPool (tx :)

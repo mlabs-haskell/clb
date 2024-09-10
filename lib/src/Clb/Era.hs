@@ -7,9 +7,11 @@ module Clb.Era (
   IsCardanoLedgerEra',
   CardanoLedgerEra,
   IsMaryBasedEra (maryBasedEra),
+  DefaultEmulatorEra,
 ) where
 
 import Cardano.Api.Eras
+import Cardano.Api.Eras qualified as C
 import Cardano.Api.Shelley
 import Cardano.Ledger.Api qualified as L
 import Cardano.Ledger.Shelley.API
@@ -46,4 +48,4 @@ instance IsCardanoLedgerEra' ConwayEra (L.ConwayEra L.StandardCrypto)
 
 -- NOTE: Add more eras here as hardforks happen.
 
--- type EmulatorEra = StandardBabbage
+type DefaultEmulatorEra = C.ConwayEra

@@ -6,7 +6,7 @@ import Cardano.Ledger.Coin (Coin (Coin))
 import Clb (
   ClbState (_mockInfo),
   checkErrors,
-  defaultBabbage,
+  defaultBabbageClbConfig,
   dumpUtxoState,
   initClb,
   ppLog,
@@ -22,7 +22,7 @@ main = do
   let perWallet = lovelaceToValue $ Coin 1_000_000_000
   let (_mbErrors, clb) =
         runClb (dumpUtxoState >> checkErrors) $
-          initClb defaultBabbage _dummyTotalNotUsedNow perWallet
+          initClb defaultBabbageClbConfig _dummyTotalNotUsedNow perWallet
   let logDoc = ppLog $ _mockInfo clb
   let options = defaultLayoutOptions {layoutPageWidth = AvailablePerLine 150 1.0}
   let logString = renderString $ layoutPretty options logDoc

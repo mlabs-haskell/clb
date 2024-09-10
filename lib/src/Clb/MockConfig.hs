@@ -5,10 +5,10 @@ module Clb.MockConfig (
   ClbConfig (..),
   CheckLimits (..),
   defaultSlotConfig,
-  defaultClbConfig,
-  defaultBabbage,
+  mkDefaultClbConfig,
+  defaultBabbageClbConfig,
   defaultBabbageParams,
-  defaultConway,
+  defaultConwayClbConfig,
   defaultConwayParams,
   skipLimits,
   warnLimits,
@@ -17,6 +17,7 @@ module Clb.MockConfig (
   paramsFromConfig,
   defaultConwayTransitionConfig,
   defaultBabbageTransitionConfig,
+  defaultClbConfig,
 ) where
 
 import Cardano.Api qualified as C
@@ -31,7 +32,7 @@ import Cardano.Ledger.Conway.Transition qualified as T
 import Cardano.Ledger.Mary.Transition qualified as T
 import Cardano.Ledger.Shelley.API qualified as L
 import Cardano.Ledger.Shelley.Transition qualified as T
-import Clb.Era (CardanoLedgerEra)
+import Clb.Era (CardanoLedgerEra, DefaultEmulatorEra)
 import Clb.Params (
   PParams,
   TransitionConfig,
@@ -78,8 +79,8 @@ defaultSlotConfig =
  then Babbage era TXs will be used for testing
  FIXME: remove rest of `Babbage` naming distinction (not applicable anymore)
 -}
-defaultBabbage :: ClbConfig C.BabbageEra
-defaultBabbage = defaultClbConfig defaultBabbageParams defaultBabbageTransitionConfig
+defaultBabbageClbConfig :: ClbConfig C.BabbageEra
+defaultBabbageClbConfig = mkDefaultClbConfig defaultBabbageParams defaultBabbageTransitionConfig
 
 defaultBabbageTransitionConfig :: TransitionConfig C.BabbageEra
 defaultBabbageTransitionConfig =
@@ -101,18 +102,19 @@ defaultBabbageTransitionConfig =
         , uappMaxCollateralInputs = defaultAlonzoParams' ^. Alonzo.ppMaxCollateralInputsL
         }
 
--- TODO : Rename defaultConway
-
 -- | Default Conwayconfig.
-defaultConway :: ClbConfig C.ConwayEra
-defaultConway = defaultClbConfig defaultConwayParams defaultConwayTransitionConfig
+defaultConwayClbConfig :: ClbConfig C.ConwayEra
+defaultConwayClbConfig = mkDefaultClbConfig defaultConwayParams defaultConwayTransitionConfig
 
 defaultConwayTransitionConfig :: TransitionConfig C.ConwayEra
 defaultConwayTransitionConfig = T.ConwayTransitionConfig C.conwayGenesisDefaults defaultBabbageTransitionConfig
 
+defaultClbConfig :: ClbConfig DefaultEmulatorEra
+defaultClbConfig = defaultConwayClbConfig
+
 -- | Default blockchain config.
-defaultClbConfig :: PParams era -> TransitionConfig era -> ClbConfig era
-defaultClbConfig params config =
+mkDefaultClbConfig :: PParams era -> TransitionConfig era -> ClbConfig era
+mkDefaultClbConfig params config =
   ClbConfig
     { clbConfigCheckLimits = ErrorLimits
     , clbConfigProtocol = params

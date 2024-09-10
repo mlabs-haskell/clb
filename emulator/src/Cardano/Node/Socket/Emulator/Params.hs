@@ -5,7 +5,7 @@ import Cardano.Api.Genesis (ShelleyGenesis)
 import Cardano.Ledger.Api.Transition qualified as L
 import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Node.Socket.Emulator.Types
-import Clb (ClbConfig, defaultBabbage)
+import Clb (ClbConfig, defaultBabbageClbConfig)
 import Clb.MockConfig (defaultConwayTransitionConfig, paramsFromConfig)
 import Clb.Params (emulatorAlonzoGenesisDefaults, emulatorConwayGenesisDefaults, emulatorShelleyGenesisDefaults)
 import Data.Aeson (FromJSON, eitherDecode)
