@@ -1,10 +1,11 @@
 -- | Config for emulator (from PSM)
 module Clb.MockConfig (
+  -- TODO : Rename Module name
   -- Stat (..),
   ClbConfig (..),
   CheckLimits (..),
   defaultSlotConfig,
-  defaultMockConfig,
+  defaultClbConfig,
   defaultBabbage,
   defaultBabbageParams,
   defaultConway,
@@ -44,15 +45,15 @@ import PlutusLedgerApi.V3 (POSIXTime (getPOSIXTime))
 
 -- | Config for the blockchain.
 data ClbConfig era = ClbConfig
-  { mockConfigCheckLimits :: !CheckLimits
+  { clbConfigCheckLimits :: !CheckLimits
   -- ^ limits check mode
-  , mockConfigProtocol :: !(PParams era)
+  , clbConfigProtocol :: !(PParams era)
   -- ^ Protocol parameters
-  , mockConfigNetworkId :: !C.NetworkId
+  , clbConfigNetworkId :: !C.NetworkId
   -- ^ Network id (mainnet / testnet)
-  , mockConfigSlotConfig :: !SlotConfig
+  , clbConfigSlotConfig :: !SlotConfig
   -- ^ Slot config
-  , mockConfigConfig :: !(TransitionConfig era)
+  , clbConfigConfig :: !(TransitionConfig era)
   -- ^ Transition configuration : needed to be able to start in a current era
   }
 
@@ -78,7 +79,7 @@ defaultSlotConfig =
  FIXME: remove rest of `Babbage` naming distinction (not applicable anymore)
 -}
 defaultBabbage :: ClbConfig C.BabbageEra
-defaultBabbage = defaultMockConfig defaultBabbageParams defaultBabbageTransitionConfig
+defaultBabbage = defaultClbConfig defaultBabbageParams defaultBabbageTransitionConfig
 
 defaultBabbageTransitionConfig :: TransitionConfig C.BabbageEra
 defaultBabbageTransitionConfig =
@@ -104,20 +105,20 @@ defaultBabbageTransitionConfig =
 
 -- | Default Conwayconfig.
 defaultConway :: ClbConfig C.ConwayEra
-defaultConway = defaultMockConfig defaultConwayParams defaultConwayTransitionConfig
+defaultConway = defaultClbConfig defaultConwayParams defaultConwayTransitionConfig
 
 defaultConwayTransitionConfig :: TransitionConfig C.ConwayEra
 defaultConwayTransitionConfig = T.ConwayTransitionConfig C.conwayGenesisDefaults defaultBabbageTransitionConfig
 
 -- | Default blockchain config.
-defaultMockConfig :: PParams era -> TransitionConfig era -> ClbConfig era
-defaultMockConfig params config =
+defaultClbConfig :: PParams era -> TransitionConfig era -> ClbConfig era
+defaultClbConfig params config =
   ClbConfig
-    { mockConfigCheckLimits = ErrorLimits
-    , mockConfigProtocol = params
-    , mockConfigNetworkId = C.Testnet $ C.NetworkMagic 42
-    , mockConfigSlotConfig = defaultSlotConfig
-    , mockConfigConfig = config
+    { clbConfigCheckLimits = ErrorLimits
+    , clbConfigProtocol = params
+    , clbConfigNetworkId = C.Testnet $ C.NetworkMagic 42
+    , clbConfigSlotConfig = defaultSlotConfig
+    , clbConfigConfig = config
     }
 
 paramsFromConfig ::
@@ -126,32 +127,32 @@ paramsFromConfig ::
   ClbConfig era
 paramsFromConfig tc =
   ClbConfig
-    { mockConfigSlotConfig =
+    { clbConfigSlotConfig =
         SlotConfig
           { scSlotZeroTime = utcTimeToPOSIXTime $ L.sgSystemStart sg
           , scSlotLength =
               getPOSIXTime $ nominalDiffTimeToPOSIXTime $ L.fromNominalDiffTimeMicro $ L.sgSlotLength sg
           }
-    , mockConfigProtocol = tc ^. T.tcInitialPParamsG
-    , mockConfigNetworkId = C.fromShelleyNetwork (L.sgNetworkId sg) (C.NetworkMagic $ L.sgNetworkMagic sg)
-    , mockConfigCheckLimits = ErrorLimits -- FIXME: soft-code it
-    , mockConfigConfig = tc
+    , clbConfigProtocol = tc ^. T.tcInitialPParamsG
+    , clbConfigNetworkId = C.fromShelleyNetwork (L.sgNetworkId sg) (C.NetworkMagic $ L.sgNetworkMagic sg)
+    , clbConfigCheckLimits = ErrorLimits -- FIXME: soft-code it
+    , clbConfigConfig = tc
     }
   where
     sg = tc ^. T.tcShelleyGenesisL
 
 -- | Do not check for limits
 skipLimits :: ClbConfig era -> ClbConfig era
-skipLimits cfg = cfg {mockConfigCheckLimits = IgnoreLimits}
+skipLimits cfg = cfg {clbConfigCheckLimits = IgnoreLimits}
 
 -- | Warn on limits
 warnLimits :: ClbConfig era -> ClbConfig era
-warnLimits cfg = cfg {mockConfigCheckLimits = WarnLimits}
+warnLimits cfg = cfg {clbConfigCheckLimits = WarnLimits}
 
 -- | Error on limits
 forceLimits :: ClbConfig era -> ClbConfig era
-forceLimits cfg = cfg {mockConfigCheckLimits = ErrorLimits}
+forceLimits cfg = cfg {clbConfigCheckLimits = ErrorLimits}
 
 keptBlocks :: (T.EraTransition (CardanoLedgerEra era)) => ClbConfig era -> Integer
-keptBlocks ClbConfig {mockConfigConfig} =
-  fromIntegral $ L.sgSecurityParam (mockConfigConfig ^. T.tcShelleyGenesisL)
+keptBlocks ClbConfig {clbConfigConfig} =
+  fromIntegral $ L.sgSecurityParam (clbConfigConfig ^. T.tcShelleyGenesisL)

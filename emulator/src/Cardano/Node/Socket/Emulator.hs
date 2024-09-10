@@ -35,7 +35,7 @@ import Data.Time.Units (Millisecond)
 -- import Ledger.CardanoWallet (knownAddresses)
 -- import Ledger.Value.CardanoAPI qualified as CardanoAPI
 
-import Clb (SlotConfig (..), defaultBabbage, mockConfigSlotConfig)
+import Clb (SlotConfig (..), clbConfigSlotConfig, defaultBabbage)
 import Clb.MockConfig (keptBlocks)
 import Plutus.Monitoring.Util qualified as LM
 import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty)
@@ -64,7 +64,7 @@ core
             (keptBlocks params)
             appState
 
-      let slotConfig@SlotConfig {scSlotZeroTime, scSlotLength} = mockConfigSlotConfig params
+      let slotConfig@SlotConfig {scSlotZeroTime, scSlotLength} = clbConfigSlotConfig params
       logInfo $
         StartingSlotCoordination
           (posixSecondsToUTCTime $ realToFrac scSlotZeroTime / 1_000)

@@ -12,7 +12,7 @@ module Clb (
   -- * CLB internals (revise)
   ClbState (..),
   emulatedLedgerState,
-  mockConfig,
+  clbConfig,
   mockDatums,
   mockInfo,
   mockFails,
@@ -172,7 +172,7 @@ FIXME: remove non-state parts like MockConfig and Log (?)
 -}
 data ClbState era = ClbState
   { _emulatedLedgerState :: !(EmulatedLedgerState era)
-  , _mockConfig :: !(ClbConfig era)
+  , _clbConfig :: !(ClbConfig era)
   , -- FIXME: rename, this is non-inline dataums cache
     _mockDatums :: !(M.Map P.DatumHash P.Datum)
   , _mockInfo :: !(Log LogEntry)
@@ -227,13 +227,13 @@ initClb ::
   Api.Value ->
   ClbState era
 initClb
-  cfg@ClbConfig {mockConfigProtocol = pparams}
+  cfg@ClbConfig {clbConfigProtocol = pparams}
   _initVal
   walletFunds =
     ClbState
       { _emulatedLedgerState = setUtxo pparams utxos (initialState pparams)
       , _mockDatums = M.empty
-      , _mockConfig = cfg
+      , _clbConfig = cfg
       , _mockInfo = mempty
       , _mockFails = mempty
       , _txPool = mempty
@@ -302,7 +302,7 @@ fromLog (Log s) = toList s
 --------------------------------------------------------------------------------
 
 getClbConfig :: (Monad m) => ClbT era m (ClbConfig era)
-getClbConfig = gets _mockConfig
+getClbConfig = gets _clbConfig
 
 getCurrentSlot :: (Monad m) => ClbT era m C.SlotNo
 getCurrentSlot = gets (L.ledgerSlotNo . _ledgerEnv . _emulatedLedgerState)
@@ -333,7 +333,8 @@ appendLog slot val (Log xs) = Log (xs Seq.|> (slot, val))
 
 getUtxosAt ::
   (Monad m, Core.EraTxOut (CardanoLedgerEra era)) =>
-  L.Addr (L.EraCrypto (CardanoLedgerEra era)) -> ClbT era m (L.UTxO (CardanoLedgerEra era))
+  L.Addr (L.EraCrypto (CardanoLedgerEra era)) ->
+  ClbT era m (L.UTxO (CardanoLedgerEra era))
 getUtxosAt addr = do
   allUTxOs <- gets getUtxosAtState
   let hasAddr txOut = txOut ^. L.addrTxOutL == addr
@@ -378,11 +379,11 @@ txOutRefAtPaymentCredState cred st = fmap transTxIn . M.keys $ M.filter withCred
 
 getEpochInfo :: (Monad m) => ClbT era m (EpochInfo (Either Text))
 getEpochInfo =
-  gets (slotConfigToEpochInfo . mockConfigSlotConfig . _mockConfig)
+  gets (slotConfigToEpochInfo . clbConfigSlotConfig . _clbConfig)
 
 getGlobals :: forall era m. (Monad m, IsCardanoLedgerEra era) => ClbT era m Globals
 getGlobals = do
-  pparams <- gets (mockConfigProtocol . _mockConfig)
+  pparams <- gets (clbConfigProtocol . _clbConfig)
   let majorVer = L.pvMajor $ view L.ppProtocolVersionL pparams
   epochInfo <- getEpochInfo
   pure $

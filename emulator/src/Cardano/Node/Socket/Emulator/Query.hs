@@ -65,8 +65,8 @@ handleQuery state = \case
     pure $ Consensus.EraIndex (S (S (S (S (S (S (Z (K ())))))))) -- ConwayEra
   BlockQuery q -> printError $ "Unimplemented BlockQuery received: " ++ show q
   GetSystemStart -> do
-    AppState _ _ ClbConfig {mockConfigSlotConfig} <- readMVar state
-    pure $ C.SystemStart $ posixTimeToUTCTime $ scSlotZeroTime mockConfigSlotConfig
+    AppState _ _ ClbConfig {clbConfigSlotConfig} <- readMVar state
+    pure $ C.SystemStart $ posixTimeToUTCTime $ scSlotZeroTime clbConfigSlotConfig
   GetChainBlockNo -> do
     tip <- getTip state
     case tip of
@@ -77,10 +77,11 @@ handleQuery state = \case
 -- FIXME: Parametrized in era (?)
 queryIfCurrentConway ::
   (block ~ Shelley.ShelleyBlock (Praos StandardCrypto) (ConwayEra StandardCrypto)) =>
-  BlockQuery block result -> ClbT C.ConwayEra IO result
+  BlockQuery block result ->
+  ClbT C.ConwayEra IO result
 queryIfCurrentConway = \case
-  GetGenesisConfig -> Shelley.compactGenesis . view L.tcShelleyGenesisL . mockConfigConfig <$> getClbConfig
-  GetCurrentPParams -> mockConfigProtocol <$> getClbConfig
+  GetGenesisConfig -> Shelley.compactGenesis . view L.tcShelleyGenesisL . clbConfigConfig <$> getClbConfig
+  GetCurrentPParams -> clbConfigProtocol <$> getClbConfig
   GetEpochNo -> do
     ei <- epochInfo <$> getGlobals
     slotNo <- getCurrentSlot
@@ -116,5 +117,5 @@ emulatorGenesisWindow = GenesisWindow window
 
 -- | Calculate the cardano-ledger `SlotLength`
 slotLength :: ClbConfig era -> SlotLength
-slotLength ClbConfig {mockConfigSlotConfig} =
-  mkSlotLength $ posixTimeToNominalDiffTime $ POSIXTime $ scSlotLength mockConfigSlotConfig
+slotLength ClbConfig {clbConfigSlotConfig} =
+  mkSlotLength $ posixTimeToNominalDiffTime $ POSIXTime $ scSlotLength clbConfigSlotConfig
