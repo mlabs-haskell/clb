@@ -12,6 +12,5 @@ import System.Exit (die)
 
 main :: IO ()
 main = do
-  -- TODO : Fail gracefully (Can't run with no socket path!)
-  -- config <- parseEmulatorArgs
+  config <- parseEmulatorArgs
   NodeServer.main NodeServer.prettyTrace def

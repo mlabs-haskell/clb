@@ -58,7 +58,7 @@ commandParser =
 
 -- | Data type for the `run` command options
 data NodeServerRunOptions = RunOptions
-  { nsoConfig :: Maybe FilePath
+  { nsoConfig :: FilePath
   , nsoTopology :: Maybe FilePath
   , nsoDatabasePath :: Maybe FilePath
   , nsoShelleyKESKey :: Maybe FilePath
@@ -77,12 +77,11 @@ data NodeServerRunOptions = RunOptions
 nodeServerOptionsParser :: Parser NodeServerRunOptions
 nodeServerOptionsParser =
   RunOptions
-    <$> optional
-      ( strOption
-          ( long "config"
-              <> metavar "CONFIG"
-              <> help "Path to the configuration file"
-          )
+    <$> strOption
+      ( long "config"
+          <> metavar "CONFIG"
+          <> noArgError (ExpectsArgError "--config")
+          <> help "Path to the configuration file"
       )
     <*> optional
       ( strOption
