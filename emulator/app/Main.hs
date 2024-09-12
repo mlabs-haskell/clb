@@ -13,4 +13,4 @@ import System.Exit (die)
 main :: IO ()
 main = do
   config <- parseEmulatorArgs
-  NodeServer.main NodeServer.prettyTrace def
+  NodeServer.main NodeServer.prettyTrace config
