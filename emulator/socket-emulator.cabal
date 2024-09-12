@@ -24,6 +24,7 @@ library
   hs-source-dirs:  src
   exposed-modules:
     Cardano.Node.Socket.Emulator
+    Cardano.Node.Socket.Emulator.CLI
     Cardano.Node.Socket.Emulator.Mock
     Cardano.Node.Socket.Emulator.Params
     Cardano.Node.Socket.Emulator.Query
@@ -60,6 +61,7 @@ library
     , io-classes
     , iohk-monitoring
     , memory
+    , optparse-applicative-fork
     , ouroboros-consensus
     , ouroboros-consensus-cardano
     , ouroboros-consensus-diffusion
