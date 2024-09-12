@@ -3,14 +3,16 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Cardano.Node.Socket.Emulator.CLI (parseEmulatorArgs) where
+module Cardano.Node.Socket.Emulator.CLI (buildConfig) where
 
-import Cardano.Node.Socket.Emulator.Types (NodeServerConfig (..))
+import Cardano.Node.Socket.Emulator.Configuration (EmulatorConfiguration (..))
+import Cardano.Node.Socket.Emulator.Types (NodeServerConfig (..), defaultNodeServerConfig)
 import Control.Monad (join)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Map (Map)
 import Data.Maybe (Maybe)
 import Data.Semigroup ((<>))
+import Data.Yaml (decodeFileThrow)
 import GHC.Generics (Generic)
 import Options.Applicative (
   ParseError (ExpectsArgError),
@@ -33,11 +35,41 @@ import Options.Applicative (
   strOption,
   (<**>),
  )
+import System.Directory (getCurrentDirectory)
 import System.Environment (getArgs, getProgName)
 import System.Exit (die)
+import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
 
--- Intermediary types for command-line options
+-- Main function to parse the command line arguments
+buildConfig :: IO NodeServerConfig
+buildConfig = do
+  RunCommand opts <- execParser optsParser
+  buildNodeServerConfig opts
+  where
+    optsParser =
+      info
+        (commandParser <**> helper)
+        ( fullDesc
+            <> progDesc "Start a node server with the given configuration"
+            <> header "Node Server Configuration Parser"
+        )
+
+-- Function to convert NodeServerOptions to NodeServerConfig
+buildNodeServerConfig :: NodeServerRunOptions -> IO NodeServerConfig
+buildNodeServerConfig RunOptions {..} = do
+  EmulatorConfiguration {..} <- decodeFileThrow nsoConfig
+  -- lcd <- getCurrentDirectory
+  -- putStrLn $ "Current directory: " <> lcd
+  let config =
+        defaultNodeServerConfig
+          { nscSocketPath = nsoSocketPath
+          , nscShelleyGenesisPath = Just ecShelleyGenesisFile
+          , nscAlonzoGenesisPath = Just ecAlonzoGenesisFile
+          , nscConwayGenesisPath = Just ecConwayGenesisFile
+          }
+  print config
+  pure config
 
 -- | Data type representing the possible commands
 newtype NodeServerCommands
@@ -153,37 +185,3 @@ nodeServerOptionsParser =
               <> help "Host address for the server"
           )
       )
-
--- Function to convert NodeServerOptions to NodeServerConfig
-buildNodeServerConfig :: NodeServerRunOptions -> Either String NodeServerConfig
-buildNodeServerConfig RunOptions {..} = do
-  Right $
-    NodeServerConfig
-      { nscInitialTxWallets = [] -- TODO : implement
-      , nscSocketPath = nsoSocketPath
-      , nscShelleyGenesisPath = Nothing -- TODO : implement
-      , nscAlonzoGenesisPath = Nothing -- TODO : implement
-      , nscConwayGenesisPath = Nothing -- TODO : implement
-      }
-
--- | Parser for the `run` subcommand
-runCommandParser :: Parser NodeServerRunOptions
-runCommandParser = nodeServerOptionsParser
-
--- Main function to parse the command line arguments
-parseEmulatorArgs :: IO NodeServerConfig
-parseEmulatorArgs = do
-  cmd <- execParser optsParser
-  case cmd of
-    RunCommand opts ->
-      case buildNodeServerConfig opts of
-        Right config -> return config
-        Left errMsg -> die $ errMsg ++ "\nUse '--help' to see usage information."
-  where
-    optsParser =
-      info
-        (commandParser <**> helper)
-        ( fullDesc
-            <> progDesc "Start a node server with the given configuration"
-            <> header "Node Server Configuration Parser"
-        )

@@ -38,3 +38,11 @@ $ cabal run smoke-test
  --socket-path ./socket/pool2/sock
  --port 43159
  --host-addr 127.0.0.1
+
+cardano-test command to run:
+
+export CARDANO_NODE=/home/euonymos/src/mlabs/clb/dist-newstyle/build/x86_64-linux/ghc-9.6.6/socket-emulator-1.0.0/x/cardano-node-socket-emulator/build/cardano-node-socket-emulator/cardano-node-socket-emulator; cabal run cardano-testnet -- cardano --conway-era --testnet-magic 764824073 --nodeLoggingFormat text
+
+# TODO
+
+use network magic from CLI args

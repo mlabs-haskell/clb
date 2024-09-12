@@ -25,6 +25,7 @@ library
   exposed-modules:
     Cardano.Node.Socket.Emulator
     Cardano.Node.Socket.Emulator.CLI
+    Cardano.Node.Socket.Emulator.Configuration
     Cardano.Node.Socket.Emulator.Mock
     Cardano.Node.Socket.Emulator.Params
     Cardano.Node.Socket.Emulator.Query
@@ -76,7 +77,6 @@ library
     , strict-sop-core
     , typed-protocols
 
-  -- , cardano-api:{cardano-api, internal}                         ^>=8.46
   ------------------------
   -- Non-IOG dependencies
   ------------------------
@@ -89,6 +89,8 @@ library
     , containers
     , contra-tracer
     , data-default
+    , directory
+    , filepath
     , freer-simple
     , lens
     , mtl
@@ -99,6 +101,7 @@ library
     , text
     , time
     , time-units
+    , yaml
 
 executable cardano-node-socket-emulator
   import:           lang

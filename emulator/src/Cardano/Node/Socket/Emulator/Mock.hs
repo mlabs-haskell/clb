@@ -23,7 +23,8 @@ slotCoordinator ::
 slotCoordinator sc serverHandler = do
   forever $ do
     slot <- currentSlot sc
-    print slot
+    -- FIXME: make more realistic probably
+    putStrLn $ "Chain extended, new tip, slot is: " <> show slot
     void $ Server.modifySlot (const slot) serverHandler
     now <- Time.getPOSIXTime
     let delay = slotToBeginPOSIXTime sc (slot + 1) - nominalDiffTimeToPOSIXTime now
