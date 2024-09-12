@@ -24,7 +24,7 @@ import Cardano.Node.Socket.Emulator.Types (
   initialChainState,
  )
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Monad (forever, void)
+import Control.Monad (forever, void, when)
 import Control.Monad.Freer.Extras.Log (logInfo)
 import Control.Monad.IO.Class (liftIO)
 import Data.Default (def)

@@ -8,18 +8,6 @@ common lang
     ImportQualifiedPost
     LambdaCase
 
-  -- DeriveFoldable
-  -- DeriveFunctor
-  -- DeriveGeneric
-  -- DeriveLift
-  -- DeriveTraversable
-  -- ExplicitForAll
-  -- FlexibleContexts
-  -- GeneralizedNewtypeDeriving
-  -- NamedFieldPuns
-  -- ScopedTypeVariables
-  -- StandaloneDeriving
-
   ghc-options:
     -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns
     -Wnoncanonical-monad-instances -Wredundant-constraints -fplugin-opt
@@ -53,10 +41,6 @@ library
   build-depends:
     , clb
     , freer-extras  ^>=1.3.0
-
-  -- , cardano-node-emulator  ^>=1.3.0
-  -- , plutus-ledger          ^>=1.3.0
-  -- , plutus-script-utils    ^>=1.3.0
 
   --------------------------
   -- Other IOG dependencies
@@ -123,5 +107,6 @@ executable cardano-node-socket-emulator
   build-depends:    iohk-monitoring
   build-depends:
     , base           >=4.9 && <5
+    , containers
     , data-default
     , prettyprinter

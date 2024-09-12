@@ -21,3 +21,20 @@ $ cd clb
 $ direnv allow
 $ cabal run smoke-test
 ```
+
+# mimic cardano-node args
+
+ cabal run socket-emulator -- run --config /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/configuration.yaml --topology /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/pools-keys/pool2/topology.json --database-path /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/pools-keys/pool2/db --shelley-kes-key /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/pools-keys/pool2/kes.skey --shelley-vrf-key /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/pools-keys/pool2/vrf.skey --byron-delegation-certificate /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/pools-keys/pool2/byron-delegation.cert --byron-signing-key /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/pools-keys/pool2/byron-delegate.key --shelley-operational-certificate /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/pools-keys/pool2/opcert.cert --socket-path ./socket/pool2/sock --port 43159 --host-addr 127.0.0.1
+
+ run
+ --config /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/configuration.yaml
+ --topology /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/pools-keys/pool2/topology.json
+ --database-path /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/pools-keys/pool2/db
+ --shelley-kes-key /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/pools-keys/pool2/kes.skey
+ --shelley-vrf-key /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/pools-keys/pool2/vrf.skey
+ --byron-delegation-certificate /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/pools-keys/pool2/byron-delegation.cert
+ --byron-signing-key /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/pools-keys/pool2/byron-delegate.key
+ --shelley-operational-certificate /tmp/nix-shell.KrrSIE/testnet-test-d0616bdcba37af74/pools-keys/pool2/opcert.cert
+ --socket-path ./socket/pool2/sock
+ --port 43159
+ --host-addr 127.0.0.1
