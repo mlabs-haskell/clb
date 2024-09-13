@@ -128,7 +128,7 @@ import Cardano.Node.Socket.Emulator.Types (
   toCardanoBlock,
   txSubmissionCodec,
  )
-import Clb (Block, ClbState (ClbState), ClbT, ValidationResult (..), addTxToPool, applyTx, emulatedLedgerState, unwrapClbT)
+import Clb (Block, ClbState (ClbState), ClbT, ValidationResult (..), addTxToPool, applyTx, emulatedLedgerState, unwrapClbT, validateTx)
 import Clb.TimeSlot (Slot)
 import Control.Monad.State (StateT (runStateT))
 
@@ -642,17 +642,14 @@ submitTx state tx = case C.fromConsensusGenTx tx of
       _
       params <-
       readMVar state
-    -- this should not be sendTx here we need to validate tx only!
-    (res, _state) <- runStateT (unwrapClbT $ E.sendTx shelleyTx) clbState
+    (res, _state) <- runStateT (unwrapClbT $ Clb.validateTx shelleyTx) clbState
     case res of
       Fail _ err ->
-        -- FIXME: conway
-        undefined
-      -- pure $
-      --   TxSubmission.SubmitFail
-      --     ( Consensus.HardForkApplyTxErrFromEra
-      --         (Consensus.OneEraApplyTxErr (S (S (S (S (S (S (Z (WrapApplyTxErr err)))))))))
-      --     )
+        pure $
+          TxSubmission.SubmitFail
+            ( Consensus.HardForkApplyTxErrFromEra
+                (Consensus.OneEraApplyTxErr (S (S (S (S (S (S (Z (WrapApplyTxErr err)))))))))
+            )
       Success ls' _tx -> do
         let ctx = CardanoEmulatorEraTx shelleyTx
         modifyMVar_
