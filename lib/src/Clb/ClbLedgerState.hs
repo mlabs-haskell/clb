@@ -47,7 +47,7 @@ data EmulatedLedgerState era = EmulatedLedgerState
   , _currentBlock :: !(EmulatorBlock era)
   }
 
-deriving instance (IsCardanoLedgerEra era, Show (C.Tx (CardanoLedgerEra era))) => Show (EmulatedLedgerState era)
+deriving instance (IsCardanoLedgerEra era) => Show (EmulatedLedgerState era)
 
 makeLenses ''EmulatedLedgerState
 

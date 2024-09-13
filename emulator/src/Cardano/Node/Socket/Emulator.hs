@@ -11,9 +11,6 @@ module Cardano.Node.Socket.Emulator (
 import Cardano.Api (NetworkId, NetworkMagic (NetworkMagic), toNetworkMagic)
 import Cardano.Api.Genesis (ShelleyGenesis (sgNetworkMagic, sgSlotLength))
 import Cardano.BM.Trace (Trace, stdoutTrace)
-
--- import Cardano.Node.Emulator.Internal.Node (SlotConfig (SlotConfig, scSlotLength, scSlotZeroTime))
--- import Cardano.Node.Emulator.Internal.Node.Params (keptBlocks, pSlotConfig)
 import Cardano.Node.Socket.Emulator.Mock (slotCoordinator)
 import Cardano.Node.Socket.Emulator.Params qualified as Params
 import Cardano.Node.Socket.Emulator.Server qualified as Server
@@ -23,6 +20,8 @@ import Cardano.Node.Socket.Emulator.Types (
   NodeServerConfig (..),
   initialChainState,
  )
+import Clb.MockConfig (ClbConfig (clbConfigSlotConfig), keptBlocks)
+import Clb.TimeSlot (SlotConfig (SlotConfig, scSlotLength, scSlotZeroTime))
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forever, void)
 import Control.Monad.Freer.Extras.Log (logInfo)
@@ -31,12 +30,6 @@ import Data.Default (def)
 import Data.Map.Strict qualified as Map
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Data.Time.Units (Millisecond)
-
--- import Ledger.CardanoWallet (knownAddresses)
--- import Ledger.Value.CardanoAPI qualified as CardanoAPI
-
-import Clb.MockConfig (ClbConfig (clbConfigSlotConfig), keptBlocks)
-import Clb.TimeSlot (SlotConfig (SlotConfig, scSlotLength, scSlotZeroTime))
 import Plutus.Monitoring.Util qualified as LM
 import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty)
 import Prettyprinter.Render.Text (renderStrict)

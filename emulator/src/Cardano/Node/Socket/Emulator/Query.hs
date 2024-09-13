@@ -2,11 +2,12 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Cardano.Node.Socket.Emulator.Query (handleQuery) where
+module Cardano.Node.Socket.Emulator.Query (HandleQuery (..)) where
 
-import Cardano.Api qualified as C
+import Cardano.Api qualified as Api
 import Cardano.Api.Eras qualified as C
 import Cardano.Api.Shelley qualified as C
+import Cardano.Ledger.Api qualified as L
 import Cardano.Ledger.Api.Transition qualified as L
 import Cardano.Ledger.BaseTypes (epochInfo)
 import Cardano.Ledger.Shelley.LedgerState qualified as L
@@ -53,13 +54,22 @@ import Ouroboros.Consensus.Shelley.Ledger.Query (BlockQuery (..))
 import Ouroboros.Network.Block qualified as O
 import PlutusLedgerApi.V1 (POSIXTime (POSIXTime, getPOSIXTime))
 
-handleQuery ::
+class HandleQuery era where
+  handleQuery ::
+    (block ~ CardanoBlock StandardCrypto) =>
+    MVar (AppState era) ->
+    Query block result ->
+    IO result
+
+instance HandleQuery C.ConwayEra where
+  handleQuery = handleQueryConwayEra
+
+handleQueryConwayEra ::
   (block ~ CardanoBlock StandardCrypto) =>
-  -- FIXME: Parametrized in era (?) - need to parametrize queryIfCurrentConway
   MVar (AppState C.ConwayEra) ->
   Query block result ->
   IO result
-handleQuery state = \case
+handleQueryConwayEra state = \case
   BlockQuery (QueryIfCurrentConway q) -> do
     (_logs, res) <- runChainEffects state $ queryIfCurrentConway q
     either (printError . show) (pure . Right) res
@@ -80,7 +90,6 @@ handleQuery state = \case
       (O.Tip _ _ curBlockNo) -> pure $ At curBlockNo
   GetChainPoint -> printError "Unimplemented: GetChainPoint"
 
--- FIXME: Parametrized in era (?)
 queryIfCurrentConway ::
   (block ~ Shelley.ShelleyBlock (Praos StandardCrypto) (ConwayEra StandardCrypto)) =>
   BlockQuery block result ->

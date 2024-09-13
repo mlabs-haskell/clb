@@ -104,7 +104,7 @@ import Clb.ClbLedgerState as E
 -- import Cardano.Node.Emulator.Internal.API qualified as E
 -- import Cardano.Node.Emulator.Internal.Node.Chain qualified as Chain
 -- import Cardano.Node.Emulator.Internal.Node.Validation qualified as Validation
-import Cardano.Node.Socket.Emulator.Query (handleQuery)
+import Cardano.Node.Socket.Emulator.Query (HandleQuery (handleQuery))
 import Cardano.Node.Socket.Emulator.Types (
   AppState (..),
   BlockId (BlockId),
@@ -572,8 +572,8 @@ txSubmission mvChainState =
         )
 
 stateQuery ::
-  -- FIX : MVar (AppState era) - After fixing stateQueryServer
-  MVar (AppState C.ConwayEra) ->
+  (HandleQuery era) =>
+  MVar (AppState era) ->
   RunMiniProtocolWithMinimalCtx 'ResponderMode LocalAddress LBS.ByteString IO Void ()
 stateQuery mvChainState =
   ResponderProtocolOnly $
@@ -668,9 +668,8 @@ submitTx state tx = case C.fromConsensusGenTx tx of
 -- should be SubmitFail HardForkApplyTxErrWrongEra, but the Mismatch type is complicated
 
 stateQueryServer ::
-  (block ~ CardanoBlock StandardCrypto) =>
-  -- FIX : MVar (AppState era) - after fixing handleQuery @Cardano.Node.Socket.Emulator.Query
-  MVar (AppState C.ConwayEra) ->
+  (block ~ CardanoBlock StandardCrypto, HandleQuery era) =>
+  MVar (AppState era) ->
   StateQuery.LocalStateQueryServer block (Point block) (Query block) IO ()
 stateQueryServer state = Query.LocalStateQueryServer {Query.runLocalStateQueryServer = pure idle}
   where

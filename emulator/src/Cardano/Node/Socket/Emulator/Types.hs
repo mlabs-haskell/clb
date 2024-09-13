@@ -290,8 +290,13 @@ instance Pretty CNSEServerLogMsg where
 newtype BlockId = BlockId {getBlockId :: BS.ShortByteString}
   deriving (Eq, Ord, Generic)
   deriving newtype (CBOR.Serialise)
+  deriving (Pretty) via (PrettyShow BlockId)
 
--- deriving (Pretty) via (PrettyShow BlockId) FIXME:
+-- | Newtype wrapper for deriving 'Pretty' via a 'Show' instance
+newtype PrettyShow a = PrettyShow {unPrettyShow :: a}
+
+instance (Show a) => Pretty (PrettyShow a) where
+  pretty = viaShow . unPrettyShow
 
 instance Show BlockId where
   show = Text.unpack . B16.extractBase16 . B16.encodeBase16 . BS.fromShort . getBlockId
