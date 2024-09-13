@@ -71,6 +71,7 @@ module Clb (
   processBlock,
   addTxToPool,
   applyTx,
+  getStakePools,
 )
 where
 
@@ -126,6 +127,7 @@ import Data.Map qualified as Map
 import Data.Maybe (catMaybes)
 import Data.Sequence (Seq (..))
 import Data.Sequence qualified as Seq
+import Data.Set (Set)
 import Data.Text (Text)
 import PlutusLedgerApi.V1 qualified as P (Credential, Datum, DatumHash, TxOutRef)
 import PlutusLedgerApi.V1 qualified as PV1
@@ -310,6 +312,13 @@ getClbConfig = gets _clbConfig
 
 getCurrentSlot :: (Monad m) => ClbT era m C.SlotNo
 getCurrentSlot = gets (L.ledgerSlotNo . _ledgerEnv . _emulatedLedgerState)
+
+getStakePools ::
+  ( Monad m
+  , Core.EraCrypto (CardanoLedgerEra era) ~ L.StandardCrypto
+  ) =>
+  ClbT era m (Set (L.KeyHash 'L.StakePool L.StandardCrypto))
+getStakePools = gets (Map.keysSet . L.psStakePoolParams . L.certPState . L.lsCertState . _memPoolState . _emulatedLedgerState)
 
 -- | Log a generic (non-typed) error.
 logError :: (Monad m) => String -> ClbT era m ()

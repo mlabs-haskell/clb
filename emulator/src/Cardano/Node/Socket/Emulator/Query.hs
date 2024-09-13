@@ -20,7 +20,7 @@ import Cardano.Node.Socket.Emulator.Types (
 import Cardano.Slotting.EpochInfo (epochInfoEpoch)
 import Cardano.Slotting.Slot (WithOrigin (..))
 import Cardano.Slotting.Time (SlotLength, mkSlotLength)
-import Clb (ClbT, emulatedLedgerState, getClbConfig, getCurrentSlot, getGlobals, getUtxosAt, txOutRefAt)
+import Clb (ClbT, emulatedLedgerState, getClbConfig, getCurrentSlot, getGlobals, getStakePools, getUtxosAt, logInfo, txOutRefAt)
 import Clb.ClbLedgerState (memPoolState)
 import Clb.MockConfig (ClbConfig (..))
 import Clb.TimeSlot (
@@ -70,25 +70,33 @@ handleQueryConwayEra ::
   Query block result ->
   IO result
 handleQueryConwayEra state = \case
-  BlockQuery (QueryIfCurrentConway q) -> do
+  query@(BlockQuery (QueryIfCurrentConway q)) -> do
+    putStrLn $ "1 - Query was received: " ++ show query
     (_logs, res) <- runChainEffects state $ queryIfCurrentConway q
     either (printError . show) (pure . Right) res
-  BlockQuery (QueryHardFork GetInterpreter) -> do
+  query@(BlockQuery (QueryHardFork GetInterpreter)) -> do
+    putStrLn $ "2 - Query was received: " ++ show query
     AppState _ _ config <- readMVar state
     let C.EraHistory interpreter = emulatorEraHistory config
     pure interpreter
-  BlockQuery (QueryHardFork GetCurrentEra) -> do
+  query@(BlockQuery (QueryHardFork GetCurrentEra)) -> do
+    putStrLn $ "3- Query was received: " ++ show query
     pure $ Consensus.EraIndex (S (S (S (S (S (S (Z (K ())))))))) -- ConwayEra
   BlockQuery q -> printError $ "Unimplemented BlockQuery received: " ++ show q
-  GetSystemStart -> do
+  query@GetSystemStart -> do
+    putStrLn $ "4 - Query was received: " ++ show query
     AppState _ _ ClbConfig {clbConfigSlotConfig} <- readMVar state
     pure $ C.SystemStart $ posixTimeToUTCTime $ scSlotZeroTime clbConfigSlotConfig
-  GetChainBlockNo -> do
+  query@GetChainBlockNo -> do
+    putStrLn $ "5 - Query was received: " ++ show query
     tip <- getTip state
     case tip of
       O.TipGenesis -> pure Origin
       (O.Tip _ _ curBlockNo) -> pure $ At curBlockNo
-  GetChainPoint -> printError "Unimplemented: GetChainPoint"
+  query@GetChainPoint -> printError "Unimplemented: GetChainPoint"
+
+-- q -> do
+--   printError $ "Query was received: " ++ show q
 
 queryIfCurrentConway ::
   (block ~ Shelley.ShelleyBlock (Praos StandardCrypto) (ConwayEra StandardCrypto)) =>
@@ -103,7 +111,7 @@ queryIfCurrentConway = \case
     case epochInfoEpoch ei slotNo of
       Left err -> printError $ "Error calculating epoch: " ++ show err
       Right epoch -> pure epoch
-  GetStakePools -> pure mempty
+  GetStakePools -> getStakePools
   GetUTxOByAddress addrs -> let f b addr = (b <>) <$> getUtxosAt addr in foldM f mempty addrs
   GetUTxOByTxIn txIns -> C.toLedgerUTxO C.ShelleyBasedEraConway <$> utxosAtTxIns (Set.map C.fromShelleyTxIn txIns)
   q -> printError $ "Unimplemented BlockQuery(QueryIfCurrentConway) received: " ++ show q

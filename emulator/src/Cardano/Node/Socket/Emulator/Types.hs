@@ -175,6 +175,7 @@ instance Default NodeServerConfig where
   def = defaultNodeServerConfig
 
 -- TODO:
+-- type EmulatorLogs = Seq (L.LogMessage EmulatorMsg)
 type EmulatorLogs = ()
 
 -- | Application State

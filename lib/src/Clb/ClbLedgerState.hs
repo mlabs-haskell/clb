@@ -18,7 +18,6 @@ import Control.Lens (makeLenses, over, (^.))
 import Data.Default (Default, def)
 import Data.ListMap qualified as ListMap
 import Data.Map.Strict qualified as Map
-import Debug.Trace (trace)
 
 {- | Emulator block (currently we are just keeping one jumbo block
 that holds all transactions but this might be changed in the future)
@@ -129,7 +128,7 @@ initialState params tc =
       pState' :: L.PState (CardanoLedgerEra era) =
         L.PState
           (ListMap.toMap sgsPools)
-          (ListMap.toMap sgsPools)
+          Map.empty
           Map.empty
           Map.empty
    in state

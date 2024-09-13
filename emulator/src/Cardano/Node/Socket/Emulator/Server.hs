@@ -230,8 +230,9 @@ processChainEffects ::
   IO a
 processChainEffects trace stateVar eff = do
   (events, result) <- runChainEffects stateVar eff
-  -- FIXME: handle errors
-  -- LM.runLogEffects trace $ traverse_ (send . LMessage) events
+  -- TODO: handle logs from clb
+  -- LM.runLogEffects trace $ do
+  --   traverse_ (send . LMessage) events
   either throwIO pure result
 
 handleCommand ::

@@ -62,6 +62,7 @@ core
         StartingSlotCoordination
           (posixSecondsToUTCTime $ realToFrac scSlotZeroTime / 1_000)
           (fromInteger scSlotLength :: Millisecond)
+
       void $ liftIO $ forkIO $ slotCoordinator slotConfig serverHandler
 
       logInfo StartingCNSEServer
