@@ -266,15 +266,16 @@ handleCommand trace CommandChannel {ccCommand, ccResponse} mvAppState =
 runServerNode ::
   (MonadIO m) =>
   Trace IO EmulatorMsg ->
+  C.NetworkMagic ->
   FilePath ->
   Integer ->
   AppState C.ConwayEra ->
   m ServerHandler
-runServerNode trace shSocketPath k initialState = liftIO $ do
+runServerNode trace magic shSocketPath k initialState = liftIO $ do
   serverState <- newMVar initialState
   shCommandChannel <- CommandChannel <$> newTQueueIO <*> newTQueueIO
   globalChannel <- getChannel serverState
-  void $ forkIO . void $ protocolLoop shSocketPath serverState
+  void $ forkIO . void $ protocolLoop magic shSocketPath serverState
   void $ forkIO . forever $ handleCommand trace shCommandChannel serverState
   void $ pruneChain k globalChannel
   pure $ ServerHandler {shSocketPath, shCommandChannel}
@@ -505,10 +506,11 @@ hoistStNext (SendMsgRollBackward header tip' nextState') =
 
 protocolLoop ::
   (MonadIO m) =>
+  C.NetworkMagic ->
   FilePath ->
   MVar (AppState C.ConwayEra) ->
   m Void
-protocolLoop socketPath internalState = liftIO $ withIOManager $ \iocp -> do
+protocolLoop magic socketPath internalState = liftIO $ withIOManager $ \iocp -> do
   networkState <- newNetworkMutableState
   _ <- async $ cleanNetworkMutableState networkState
   withServerNode
@@ -526,7 +528,7 @@ protocolLoop socketPath internalState = liftIO $ withIOManager $ \iocp -> do
     ( SomeResponderApplication
         <$> versionedNodeToClientProtocols
           nodeToClientVersion
-          nodeToClientVersionData
+          (nodeToClientVersionData magic)
           (nodeToClientProtocols internalState)
     )
     nullErrorPolicies
