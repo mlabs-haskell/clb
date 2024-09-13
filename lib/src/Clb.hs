@@ -27,6 +27,7 @@ module Clb (
   txOutRefAtState,
   txOutRefAtPaymentCred,
   sendTx,
+  validateTx,
   ValidationResult (..),
   OnChainTx (..),
   Block,
