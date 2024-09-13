@@ -29,6 +29,7 @@ module Clb (
   sendTx,
   validateTx,
   ValidationResult (..),
+  ValidationError,
   OnChainTx (..),
   Block,
 

@@ -104,6 +104,13 @@ import Clb.ClbLedgerState as E
 -- import Cardano.Node.Emulator.Internal.API qualified as E
 -- import Cardano.Node.Emulator.Internal.Node.Chain qualified as Chain
 -- import Cardano.Node.Emulator.Internal.Node.Validation qualified as Validation
+
+-- runChainEffects,
+-- setTip,
+
+import Cardano.Api.Ledger qualified as C (Era)
+import Cardano.Api.Shelley qualified as C
+import Cardano.Ledger.Api qualified as L
 import Cardano.Node.Socket.Emulator.Query (HandleQuery (handleQuery))
 import Cardano.Node.Socket.Emulator.Types (
   AppState (..),
@@ -118,9 +125,6 @@ import Cardano.Node.Socket.Emulator.Types (
   getTip,
   nodeToClientVersion,
   nodeToClientVersionData,
-  -- runChainEffects,
-  -- setTip,
-
   runChainEffects,
   setTip,
   socketEmulatorState,
@@ -128,9 +132,13 @@ import Cardano.Node.Socket.Emulator.Types (
   toCardanoBlock,
   txSubmissionCodec,
  )
-import Clb (Block, ClbState (ClbState), ClbT, ValidationResult (..), addTxToPool, applyTx, emulatedLedgerState, unwrapClbT, validateTx)
+import Clb (Block, ClbState (ClbState), ClbT, ValidationError, ValidationResult (..), addTxToPool, applyTx, emulatedLedgerState, unwrapClbT, validateTx)
+import Clb.Era (IsCardanoLedgerEra)
 import Clb.TimeSlot (Slot)
 import Control.Monad.State (StateT (runStateT))
+import Data.String (IsString (fromString))
+import Ouroboros.Consensus.Byron.Ledger qualified as Consensus
+import Ouroboros.Consensus.Cardano.Block qualified as Consensus
 
 type EmulatorMsg = String
 data CommandChannel = CommandChannel
@@ -559,7 +567,9 @@ chainSync mvChainState =
         )
 
 txSubmission ::
-  MVar (AppState C.ConwayEra) ->
+  forall era.
+  (SubmitTx era) =>
+  MVar (AppState era) ->
   RunMiniProtocolWithMinimalCtx 'ResponderMode LocalAddress LBS.ByteString IO Void ()
 txSubmission mvChainState =
   ResponderProtocolOnly $
@@ -568,7 +578,7 @@ txSubmission mvChainState =
         ( nullTracer
         , txSubmissionCodec
         , TxSubmission.localTxSubmissionServerPeer
-            (pure $ txSubmissionServer mvChainState)
+            (pure $ txSubmissionServer @era mvChainState)
         )
 
 stateQuery ::
@@ -621,48 +631,68 @@ getChainPoints chain slot = do
    it is much simpler. -}
 
 txSubmissionServer ::
-  (block ~ CardanoBlock StandardCrypto) =>
-  MVar (AppState C.ConwayEra) ->
+  forall era block.
+  (block ~ CardanoBlock StandardCrypto, SubmitTx era) =>
+  MVar (AppState era) ->
   TxSubmission.LocalTxSubmissionServer (Shelley.GenTx block) (ApplyTxErr block) IO ()
 txSubmissionServer state =
   TxSubmission.LocalTxSubmissionServer
-    { TxSubmission.recvMsgSubmitTx = fmap (,txSubmissionServer state) . submitTx state
+    { TxSubmission.recvMsgSubmitTx = fmap (,txSubmissionServer state) . submitTx @era state
     , TxSubmission.recvMsgDone = ()
     }
 
-submitTx ::
-  (block ~ CardanoBlock StandardCrypto) =>
-  MVar (AppState C.ConwayEra) ->
-  Shelley.GenTx block ->
-  IO (TxSubmission.SubmitResult (ApplyTxErr block))
-submitTx state tx = case C.fromConsensusGenTx tx of
-  C.TxInMode C.ShelleyBasedEraConway shelleyTx -> do
-    AppState
-      (SocketEmulatorState clbState@(ClbState chainState _ _ _ _ _) _ _)
-      _
-      params <-
-      readMVar state
-    (res, _state) <- runStateT (unwrapClbT $ Clb.validateTx shelleyTx) clbState
-    case res of
-      Fail _ err ->
-        pure $
-          TxSubmission.SubmitFail
-            ( Consensus.HardForkApplyTxErrFromEra
-                (Consensus.OneEraApplyTxErr (S (S (S (S (S (S (Z (WrapApplyTxErr err)))))))))
-            )
-      Success ls' _tx -> do
-        let ctx = CardanoEmulatorEraTx shelleyTx
-        modifyMVar_
-          state
-          ( pure
+class SubmitTx era where
+  submitTx ::
+    (block ~ CardanoBlock StandardCrypto) =>
+    MVar (AppState era) ->
+    Shelley.GenTx block ->
+    IO (TxSubmission.SubmitResult (ApplyTxErr block))
+
+instance SubmitTx C.ConwayEra where
+  submitTx state tx = do
+    AppState (SocketEmulatorState clbState _ _) _ _ <- readMVar state
+    case C.fromConsensusGenTx tx of
+      C.TxInMode C.ShelleyBasedEraConway shelleyTx ->
+        runSubmitTx shelleyTx clbState >>= \case
+          Left err ->
+            pure $
+              TxSubmission.SubmitFail
+                ( Consensus.HardForkApplyTxErrFromEra
+                    (Consensus.OneEraApplyTxErr (S (S (S (S (S (S (Z (WrapApplyTxErr err)))))))))
+                )
+          Right modifyStateMVar -> do
+            modifyMVar_ state modifyStateMVar
+            pure TxSubmission.SubmitSuccess
+      _ -> hardForkApplyTxErrWrongEra state
+
+runSubmitTx ::
+  (IsCardanoLedgerEra era) =>
+  C.Tx era ->
+  ClbState era ->
+  IO (Either (ValidationError era) (AppState era -> IO (AppState era)))
+runSubmitTx shelleyTx clbState = do
+  (res, _state) <- runStateT (unwrapClbT $ Clb.validateTx shelleyTx) clbState
+  case res of
+    Fail _ err -> pure $ Left err
+    Success ls' _tx -> do
+      let ctx = CardanoEmulatorEraTx shelleyTx
+      let modifyStateMVar =
+            pure
               . over
                 (socketEmulatorState . emulatorState)
                 (addTxToPool ctx . (emulatedLedgerState .~ ls'))
-          )
-        pure TxSubmission.SubmitSuccess
-  _ -> pure TxSubmission.SubmitSuccess
+      pure . Right $ modifyStateMVar
 
--- should be SubmitFail HardForkApplyTxErrWrongEra, but the Mismatch type is complicated
+hardForkApplyTxErrWrongEra ::
+  forall block era.
+  (block ~ CardanoBlock StandardCrypto, (IsCardanoLedgerEra era)) =>
+  MVar (AppState era) ->
+  IO (TxSubmission.SubmitResult (ApplyTxErr block))
+hardForkApplyTxErrWrongEra _ =
+  let mismatch = Consensus.ML (Consensus.SingleEraInfo txEra) (Z $ Consensus.LedgerEraInfo (Consensus.SingleEraInfo ledgerEra))
+      txEra = "Tx Era"
+      ledgerEra = "Ledger Era : " <> fromString (L.eraName @(C.ShelleyLedgerEra era))
+   in pure $ TxSubmission.SubmitFail (Consensus.HardForkApplyTxErrWrongEra (Consensus.MismatchEraInfo mismatch))
 
 stateQueryServer ::
   (block ~ CardanoBlock StandardCrypto, HandleQuery era) =>
