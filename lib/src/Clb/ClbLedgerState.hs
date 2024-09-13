@@ -1,18 +1,24 @@
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Clb.ClbLedgerState where
 
 import Cardano.Api.Shelley qualified as C
 import Cardano.Ledger.Api qualified as L
+import Cardano.Ledger.Api.Transition (tcInitialStakingL)
+import Cardano.Ledger.Api.Transition qualified as L
 import Cardano.Ledger.Shelley.API qualified as L
 import Cardano.Ledger.Shelley.LedgerState qualified as L
 import Cardano.Slotting.Slot (SlotNo (SlotNo))
 import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra)
-import Clb.Params (PParams)
+import Clb.Params (PParams, TransitionConfig)
 import Clb.Tx (OnChainTx)
-import Control.Lens (makeLenses, over)
+import Control.Lens (makeLenses, over, (^.))
 import Data.Default (Default, def)
+import Data.ListMap qualified as ListMap
+import Data.Map.Strict qualified as Map
+import Debug.Trace (trace)
 
 {- | Emulator block (currently we are just keeping one jumbo block
 that holds all transactions but this might be changed in the future)
@@ -92,20 +98,38 @@ setUtxo params utxo els@EmulatedLedgerState {_memPoolState} = els {_memPoolState
 --     & over previousBlocks ((reverse $ state ^. currentBlock) :)
 
 -- | Initial ledger state for a distribution
-initialState :: (L.EraTxOut (CardanoLedgerEra era), Default (L.GovState (CardanoLedgerEra era))) => PParams era -> EmulatedLedgerState era
-initialState params =
-  EmulatedLedgerState
-    { _ledgerEnv =
-        L.LedgerEnv
-          { L.ledgerSlotNo = 0
-          , L.ledgerIx = minBound
-          , L.ledgerPp = params
-          , L.ledgerAccount = L.AccountState (L.Coin 0) (L.Coin 0)
+initialState ::
+  forall era.
+  ( L.EraTxOut (CardanoLedgerEra era)
+  , L.EraTransition (CardanoLedgerEra era)
+  , Default (L.GovState (CardanoLedgerEra era))
+  ) =>
+  PParams era ->
+  TransitionConfig era ->
+  EmulatedLedgerState era
+initialState params tc =
+  let L.ShelleyGenesisStaking {sgsPools} = tc ^. tcInitialStakingL
+      -- state = trace (show sgsPools) $ EmulatedLedgerState
+      state =
+        EmulatedLedgerState
+          { _ledgerEnv =
+              L.LedgerEnv
+                { L.ledgerSlotNo = 0
+                , L.ledgerIx = minBound
+                , L.ledgerPp = params
+                , L.ledgerAccount = L.AccountState (L.Coin 0) (L.Coin 0)
+                }
+          , _memPoolState =
+              L.LedgerState
+                { lsUTxOState = L.smartUTxOState params mempty (L.Coin 0) (L.Coin 0) def (L.Coin 0)
+                , lsCertState = def {L.certPState = pState'}
+                }
+          , _currentBlock = []
           }
-    , _memPoolState =
-        L.LedgerState
-          { lsUTxOState = L.smartUTxOState params mempty (L.Coin 0) (L.Coin 0) def (L.Coin 0)
-          , lsCertState = def
-          }
-    , _currentBlock = []
-    }
+      pState' :: L.PState (CardanoLedgerEra era) =
+        L.PState
+          (ListMap.toMap sgsPools)
+          (ListMap.toMap sgsPools)
+          Map.empty
+          Map.empty
+   in state

@@ -82,6 +82,7 @@ import Cardano.Crypto.Hash qualified as Crypto
 import Cardano.Crypto.Seed qualified as Crypto
 import Cardano.Ledger.Address qualified as L (compactAddr, decompactAddr)
 import Cardano.Ledger.Api qualified as L
+import Cardano.Ledger.Api.Transition (EraTransition)
 import Cardano.Ledger.BaseTypes (Globals)
 import Cardano.Ledger.BaseTypes qualified as L
 import Cardano.Ledger.Core qualified as Core
@@ -221,17 +222,19 @@ runClb (ClbT act) = runState act
 -- | Init emulator state.
 initClb ::
   forall era.
-  (IsCardanoLedgerEra era) =>
+  ( IsCardanoLedgerEra era
+  , EraTransition (CardanoLedgerEra era)
+  ) =>
   ClbConfig era ->
   Api.Value ->
   Api.Value ->
   ClbState era
 initClb
-  cfg@ClbConfig {clbConfigProtocol = pparams}
+  cfg@ClbConfig {clbConfigProtocol = pparams, clbConfigConfig = tc}
   _initVal
   walletFunds =
     ClbState
-      { _emulatedLedgerState = setUtxo pparams utxos (initialState pparams)
+      { _emulatedLedgerState = setUtxo pparams utxos (initialState pparams tc)
       , _mockDatums = M.empty
       , _clbConfig = cfg
       , _mockInfo = mempty

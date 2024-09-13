@@ -102,6 +102,7 @@ import Test.Cardano.Protocol.TPraos.Create (mkBlock, mkOCert)
 
 import Cardano.Api qualified as C
 import Cardano.Api.NetworkId (mainnetNetworkMagic)
+import Cardano.Ledger.Api.Transition (EraTransition)
 import Cardano.Ledger.Core qualified as Core
 import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra)
 import Control.Exception (Exception)
@@ -215,6 +216,7 @@ initialChainState ::
   forall m era.
   ( MonadIO m
   , IsCardanoLedgerEra era
+  , EraTransition (CardanoLedgerEra era)
   ) =>
   ClbConfig era ->
   m (SocketEmulatorState era)
