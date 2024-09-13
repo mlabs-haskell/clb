@@ -10,6 +10,7 @@ module Cardano.Node.Socket.Emulator (
 
 import Cardano.Api (NetworkId, NetworkMagic (NetworkMagic), toNetworkMagic)
 import Cardano.Api.Genesis (ShelleyGenesis (sgNetworkMagic, sgSlotLength))
+import Cardano.Api.NetworkId qualified as C
 import Cardano.BM.Trace (Trace, stdoutTrace)
 import Cardano.Node.Socket.Emulator.Mock (slotCoordinator)
 import Cardano.Node.Socket.Emulator.Params qualified as Params
@@ -20,10 +21,10 @@ import Cardano.Node.Socket.Emulator.Types (
   NodeServerConfig (..),
   initialChainState,
  )
-import Clb.MockConfig (ClbConfig (clbConfigSlotConfig), keptBlocks)
+import Clb.MockConfig (ClbConfig (clbConfigSlotConfig), clbConfigNetworkId, keptBlocks)
 import Clb.TimeSlot (SlotConfig (SlotConfig, scSlotLength, scSlotZeroTime))
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Monad (forever, void)
+import Control.Monad (forever, void, when)
 import Control.Monad.Freer.Extras.Log (logInfo)
 import Control.Monad.IO.Class (liftIO)
 import Data.Default (def)
@@ -53,6 +54,7 @@ core
         liftIO $
           Server.runServerNode
             (LM.convertLog ProcessingEmulatorMsg trace)
+            (toNetworkMagic $ clbConfigNetworkId params)
             nscSocketPath
             (keptBlocks params)
             appState
@@ -62,6 +64,7 @@ core
         StartingSlotCoordination
           (posixSecondsToUTCTime $ realToFrac scSlotZeroTime / 1_000)
           (fromInteger scSlotLength :: Millisecond)
+
       void $ liftIO $ forkIO $ slotCoordinator slotConfig serverHandler
 
       logInfo StartingCNSEServer

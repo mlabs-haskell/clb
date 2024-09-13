@@ -72,6 +72,7 @@ module Clb (
   processBlock,
   addTxToPool,
   applyTx,
+  getStakePools,
 )
 where
 
@@ -84,6 +85,7 @@ import Cardano.Crypto.Hash qualified as Crypto
 import Cardano.Crypto.Seed qualified as Crypto
 import Cardano.Ledger.Address qualified as L (compactAddr, decompactAddr)
 import Cardano.Ledger.Api qualified as L
+import Cardano.Ledger.Api.Transition (EraTransition)
 import Cardano.Ledger.BaseTypes (Globals)
 import Cardano.Ledger.BaseTypes qualified as L
 import Cardano.Ledger.Core qualified as Core
@@ -126,6 +128,7 @@ import Data.Map qualified as Map
 import Data.Maybe (catMaybes)
 import Data.Sequence (Seq (..))
 import Data.Sequence qualified as Seq
+import Data.Set (Set)
 import Data.Text (Text)
 import PlutusLedgerApi.V1 qualified as P (Credential, Datum, DatumHash, TxOutRef)
 import PlutusLedgerApi.V1 qualified as PV1
@@ -223,17 +226,19 @@ runClb (ClbT act) = runState act
 -- | Init emulator state.
 initClb ::
   forall era.
-  (IsCardanoLedgerEra era) =>
+  ( IsCardanoLedgerEra era
+  , EraTransition (CardanoLedgerEra era)
+  ) =>
   ClbConfig era ->
   Api.Value ->
   Api.Value ->
   ClbState era
 initClb
-  cfg@ClbConfig {clbConfigProtocol = pparams}
+  cfg@ClbConfig {clbConfigProtocol = pparams, clbConfigConfig = tc}
   _initVal
   walletFunds =
     ClbState
-      { _emulatedLedgerState = setUtxo pparams utxos (initialState pparams)
+      { _emulatedLedgerState = setUtxo pparams utxos (initialState pparams tc)
       , _mockDatums = M.empty
       , _clbConfig = cfg
       , _mockInfo = mempty
@@ -308,6 +313,13 @@ getClbConfig = gets _clbConfig
 
 getCurrentSlot :: (Monad m) => ClbT era m C.SlotNo
 getCurrentSlot = gets (L.ledgerSlotNo . _ledgerEnv . _emulatedLedgerState)
+
+getStakePools ::
+  ( Monad m
+  , Core.EraCrypto (CardanoLedgerEra era) ~ L.StandardCrypto
+  ) =>
+  ClbT era m (Set (L.KeyHash 'L.StakePool L.StandardCrypto))
+getStakePools = gets (Map.keysSet . L.psStakePoolParams . L.certPState . L.lsCertState . _memPoolState . _emulatedLedgerState)
 
 -- | Log a generic (non-typed) error.
 logError :: (Monad m) => String -> ClbT era m ()

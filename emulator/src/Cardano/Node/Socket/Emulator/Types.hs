@@ -102,6 +102,7 @@ import Test.Cardano.Protocol.TPraos.Create (mkBlock, mkOCert)
 
 import Cardano.Api qualified as C
 import Cardano.Api.NetworkId (mainnetNetworkMagic)
+import Cardano.Ledger.Api.Transition (EraTransition)
 import Cardano.Ledger.Core qualified as Core
 import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra)
 import Control.Exception (Exception)
@@ -174,6 +175,7 @@ instance Default NodeServerConfig where
   def = defaultNodeServerConfig
 
 -- TODO:
+-- type EmulatorLogs = Seq (L.LogMessage EmulatorMsg)
 type EmulatorLogs = ()
 
 -- | Application State
@@ -215,6 +217,7 @@ initialChainState ::
   forall m era.
   ( MonadIO m
   , IsCardanoLedgerEra era
+  , EraTransition (CardanoLedgerEra era)
   ) =>
   ClbConfig era ->
   m (SocketEmulatorState era)
@@ -319,15 +322,15 @@ nodeToClientVersion = NodeToClientV_16
 argument to the client connection function in a future PR (the network magic
 number matches the one in the test net created by scripts)
 -}
-nodeToClientVersionData :: NodeToClientVersionData
-nodeToClientVersionData = NodeToClientVersionData {networkMagic = testNetworkMagic, query = False}
+nodeToClientVersionData :: C.NetworkMagic -> NodeToClientVersionData
+nodeToClientVersionData magic = NodeToClientVersionData {networkMagic = magic, query = False}
 
-testNetworkMagic :: C.NetworkMagic
--- testNetworkMagic = C.NetworkMagic 1_097_911_063
-testNetworkMagic = mainnetNetworkMagic
+-- testNetworkMagic :: C.NetworkMagic
+-- -- testNetworkMagic = C.NetworkMagic 1_097_911_063
+-- testNetworkMagic = mainnetNetworkMagic
 
-testnet :: C.NetworkId
-testnet = C.Testnet testNetworkMagic
+-- testnet :: C.NetworkId
+-- testnet = C.Testnet testNetworkMagic
 
 doNothingResponderProtocol ::
   (MonadTimer m) =>
