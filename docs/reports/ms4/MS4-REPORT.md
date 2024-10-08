@@ -79,13 +79,13 @@ located in this [PR](https://github.com/mlabs-haskell/bet-ref-aiken/pull/1).
 
 * Traces of the bet-ref example after updating dependencies to
 Conway-compatible versions are available
-[here](https://github.com/mlabs-haskell/clb/tree/master/docs/reports/ms3/bet-ref.out).
+[here](https://github.com/mlabs-haskell/clb/tree/master/docs/reports/ms4/bet-ref.out).
 
 * The section "Conway Update" of the current document provides the report on the
 Conway part of the work as was required by the PoA statement.
 
 * All tests from the bet-ref suite are passed with an Aiken-based contract, traces can be found
-[here](https://github.com/mlabs-haskell/clb/tree/master/docs/reports/ms3/bet-ref-aiken.out).
+[here](https://github.com/mlabs-haskell/clb/tree/master/docs/reports/ms4/bet-ref-aiken.out).
 Instructions to reproduce tests can be found in this
 [PR](https://github.com/geniusyield/atlas/pull/358).
 
