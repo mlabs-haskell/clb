@@ -8,23 +8,23 @@ _Ilia Rodionov, ilia@mlabs.city_
 In this milestone, we were focused on two main tasks:
 * Updating CLB and Atlas dependencies to the latest Conway-compatible versions,
 doing all changes this update necessitates along the way.
-* Reimplementing the onchain script from bet-ref example using Aiken language
-and wiring it into bet-ref test suite.
+* Reimplementing the on-chain script from the bet-ref example using Aiken language
+and wiring it into the bet-ref test suite.
 
 ## Conway Update
 
 ### CLB
 
-The nature of changes in CLB mostly boils down to make all necessary places
-polymorphic in era. Only one era is supported by any time, but it might be
-any post-Alonzo era starting with Babbage. The default era is set to Conway.
+The nature of changes in CLB mostly boils down to making all necessary places
+polymorphic in the era. Only one era is supported at any time, but it might be
+any post-Alonzo era starting with Babbage with the default era set to Conway.
 Default Conway parameters have been added.
 
 ### Atlas
 
-Since Atlas provides its own types for all transaztion components, several
+Since Atlas provides its types for all transaction components, several
 new types have been defined along with functions to convert to/from cardano-api
-counterpars:
+counterparts:
   1. GYDRep
   2. GYDelegatee
   3. New certificates
@@ -39,12 +39,12 @@ new fees for using reference scripts.
 This work demonstrates the use of Aiken-based scripts with Atlas PAB/CLB.
 There are two main concerns when doing this:
  * Ensuring that the encoding of boundary types matches.
- * Loading external script and applying their arguments.
+ * Loading external scripts and applying their arguments.
 
 Both topics are covered in the milestone close-out
 [video](https://www.youtube.com/watch?v=o_47ItaL8kQ) in details.
 
-The current solution based on the approach of finding the proper
+The current solution is based on the approach of finding the proper
 encoding by writing proper types in Aiken for parameters, datums,
 and redeemers to match them.
 
@@ -70,9 +70,9 @@ Outputs of the milestone can be found:
   * [Upon chase/conway](https://github.com/mlabs-haskell/clb/pull/44)
 
 A new repository [bet-ref-aiken](https://github.com/mlabs-haskell/bet-ref-aiken)
-with the Aiken-based implementation of bet-ref example.
+with the Aiken-based implementation of the bet-ref example.
 
-Currently we are using the version of the contracts compiled with Aiken 1.0.29
+Currently, we are using the version of the contracts compiled with Aiken 1.0.29
 located in this [PR](https://github.com/mlabs-haskell/bet-ref-aiken/pull/1).
 
 ## Acceptance Criteria and Evidence
@@ -82,11 +82,11 @@ Conway-compatible versions are available
 [here](https://github.com/mlabs-haskell/clb/tree/master/docs/reports/ms3/bet-ref.out).
 
 * The section "Conway Update" of the current document provides the report on the
-Conway part of the work as was requires by the PoA statement.
+Conway part of the work as was required by the PoA statement.
 
-* All tests from bet-ref suite are passed with Aiken-based contract, traces can be found
+* All tests from the bet-ref suite are passed with an Aiken-based contract, traces can be found
 [here](https://github.com/mlabs-haskell/clb/tree/master/docs/reports/ms3/bet-ref-aiken.out).
-Instructions to reporoduce tests can be found in this
+Instructions to reproduce tests can be found in this
 [PR](https://github.com/geniusyield/atlas/pull/358).
 
 * A close-out video on the milestone can be found [here](https://www.youtube.com/watch?v=o_47ItaL8kQ).
