@@ -1,11 +1,13 @@
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Clb.ClbLedgerState where
 
-import Cardano.Ledger.Api qualified as C
+import Cardano.Api.Shelley qualified as C
+import Cardano.Ledger.Api qualified as L
 import Cardano.Ledger.Shelley.API qualified as L
 import Cardano.Ledger.Shelley.LedgerState qualified as L
-import Cardano.Ledger.Slot (SlotNo)
+import Cardano.Slotting.Slot (SlotNo (SlotNo))
 import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra)
 import Clb.Params (PParams)
 import Clb.Tx (OnChainTx)
@@ -15,9 +17,28 @@ import Data.Default (Default, def)
 {- | Emulator block (currently we are just keeping one jumbo block
 that holds all transactions but this might be changed in the future)
 is just a list of validated transactions.
-TODO: shall we use 'OnChainTx' here?
 -}
 type EmulatorBlock era = [OnChainTx era]
+
+-- | mempool
+type TxPool era = [CardanoTx era]
+
+-- | Cardano tx from any era.
+data CardanoTx era where
+  CardanoTx :: C.Tx era -> C.ShelleyBasedEra era -> CardanoTx era
+
+instance Show (CardanoTx era) where
+  show = const "CardanoTx"
+
+getEmulatorEraTx :: CardanoTx era -> C.Tx era
+getEmulatorEraTx (CardanoTx tx _) = tx
+
+pattern CardanoEmulatorEraTx :: (C.IsShelleyBasedEra era) => C.Tx era -> CardanoTx era
+pattern CardanoEmulatorEraTx tx <- (getEmulatorEraTx -> tx)
+  where
+    CardanoEmulatorEraTx tx = CardanoTx tx C.shelleyBasedEra
+
+{-# COMPLETE CardanoEmulatorEraTx #-}
 
 -- | State of the ledger with configuration, mempool, and the blockchain.
 data EmulatedLedgerState era = EmulatedLedgerState
@@ -26,7 +47,7 @@ data EmulatedLedgerState era = EmulatedLedgerState
   , _currentBlock :: !(EmulatorBlock era)
   }
 
-deriving instance (IsCardanoLedgerEra era, Show (C.Tx (CardanoLedgerEra era))) => Show (EmulatedLedgerState era)
+deriving instance (IsCardanoLedgerEra era) => Show (EmulatedLedgerState era)
 
 makeLenses ''EmulatedLedgerState
 
@@ -40,8 +61,23 @@ nextSlot = over ledgerEnv f
 setSlot :: SlotNo -> EmulatedLedgerState era -> EmulatedLedgerState era
 setSlot sl = over ledgerEnv (\l -> l {L.ledgerSlotNo = sl})
 
+-- | Update the slot number
+updateSlot :: (SlotNo -> SlotNo) -> EmulatedLedgerState era -> EmulatedLedgerState era
+updateSlot f = over ledgerEnv (\l -> l {L.ledgerSlotNo = f (L.ledgerSlotNo l)})
+
+-- | Get the slot number
+getSlot :: (Num a) => EmulatedLedgerState era -> a
+getSlot (EmulatedLedgerState L.LedgerEnv {ledgerSlotNo = SlotNo s} _ _) = fromIntegral s
+
 -- | Set the utxo
-setUtxo :: (C.EraTxOut (CardanoLedgerEra era), Default (C.GovState (CardanoLedgerEra era))) => C.PParams (CardanoLedgerEra era) -> L.UTxO (CardanoLedgerEra era) -> EmulatedLedgerState era -> EmulatedLedgerState era
+setUtxo ::
+  ( L.EraTxOut (CardanoLedgerEra era)
+  , Default (L.GovState (CardanoLedgerEra era))
+  ) =>
+  L.PParams (CardanoLedgerEra era) ->
+  L.UTxO (CardanoLedgerEra era) ->
+  EmulatedLedgerState era ->
+  EmulatedLedgerState era
 setUtxo params utxo els@EmulatedLedgerState {_memPoolState} = els {_memPoolState = newPoolState}
   where
     newPoolState = _memPoolState {L.lsUTxOState = L.smartUTxOState params utxo (L.Coin 0) (L.Coin 0) def (L.Coin 0)}
@@ -56,7 +92,7 @@ setUtxo params utxo els@EmulatedLedgerState {_memPoolState} = els {_memPoolState
 --     & over previousBlocks ((reverse $ state ^. currentBlock) :)
 
 -- | Initial ledger state for a distribution
-initialState :: (C.EraTxOut (CardanoLedgerEra era), Default (C.GovState (CardanoLedgerEra era))) => PParams era -> EmulatedLedgerState era
+initialState :: (L.EraTxOut (CardanoLedgerEra era), Default (L.GovState (CardanoLedgerEra era))) => PParams era -> EmulatedLedgerState era
 initialState params =
   EmulatedLedgerState
     { _ledgerEnv =

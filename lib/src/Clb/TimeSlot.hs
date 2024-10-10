@@ -5,6 +5,11 @@ module Clb.TimeSlot (
   posixTimeToUTCTime,
   nominalDiffTimeToPOSIXTime,
   posixTimeToNominalDiffTime,
+  Slot (..),
+  slotToBeginPOSIXTime,
+  currentSlot,
+  emulatorEpochSize,
+  beginningOfTime,
 ) where
 
 import PlutusTx.Prelude hiding (Eq, (<$>))
@@ -19,10 +24,9 @@ import PlutusLedgerApi.V1.Time (POSIXTime (POSIXTime, getPOSIXTime))
 import Prettyprinter (Pretty (pretty), (<+>))
 import Prelude qualified as Haskell
 
+import Cardano.Ledger.Slot qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo, fixedEpochInfo)
 import Cardano.Slotting.Time (slotLengthFromMillisec)
-
-import Clb.Params (emulatorEpochSize)
 
 {- | Datatype to configure the length (ms) of one slot and the beginning of the
  first slot.
@@ -71,3 +75,53 @@ posixTimeToNominalDiffTime =
     . (Haskell./ 1000)
     . Haskell.fromInteger
     . getPOSIXTime
+
+newtype Slot = Slot {getSlot :: Integer}
+  deriving stock (Eq, Haskell.Ord, Show, Generic)
+  deriving newtype
+    ( AdditiveSemigroup
+    , AdditiveMonoid
+    , AdditiveGroup
+    )
+  deriving newtype (Haskell.Num, Haskell.Enum, Haskell.Real, Haskell.Integral)
+
+instance Pretty Slot where
+  pretty (Slot i) = "Slot" <+> pretty i
+
+{-# INLINEABLE slotToBeginPOSIXTime #-}
+
+-- | Get the starting 'POSIXTime' of a 'Slot' given a 'SlotConfig'.
+slotToBeginPOSIXTime :: SlotConfig -> Slot -> POSIXTime
+slotToBeginPOSIXTime SlotConfig {scSlotLength, scSlotZeroTime} (Slot n) =
+  let msAfterBegin = n * scSlotLength
+   in POSIXTime $ getPOSIXTime scSlotZeroTime + msAfterBegin
+
+-- | Get the current slot number
+currentSlot :: SlotConfig -> Haskell.IO Slot
+currentSlot sc = timeToSlot Haskell.<$> Time.getPOSIXTime
+  where
+    timeToSlot =
+      posixTimeToEnclosingSlot sc
+        . nominalDiffTimeToPOSIXTime
+
+{-# INLINEABLE posixTimeToEnclosingSlot #-}
+
+-- | Convert a 'POSIXTime' to 'Slot' given a 'SlotConfig'.
+posixTimeToEnclosingSlot :: SlotConfig -> POSIXTime -> Slot
+posixTimeToEnclosingSlot SlotConfig {scSlotLength, scSlotZeroTime} (POSIXTime t) =
+  let timePassed = t - getPOSIXTime scSlotZeroTime
+      slotsPassed = divide timePassed scSlotLength
+   in Slot slotsPassed
+
+{-# INLINEABLE beginningOfTime #-}
+
+{- | 'beginningOfTime' corresponds to the Shelley launch date
+(2020-07-29T21:44:51Z) which is 1596059091000 in POSIX time
+(number of milliseconds since 1970-01-01T00:00:00Z).
+-}
+beginningOfTime :: Integer
+beginningOfTime = 1596059091000
+
+-- | A sensible default 'EpochSize' value for the emulator
+emulatorEpochSize :: L.EpochSize
+emulatorEpochSize = L.EpochSize 432000
