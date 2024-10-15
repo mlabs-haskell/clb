@@ -8,18 +8,6 @@ common lang
     ImportQualifiedPost
     LambdaCase
 
-  -- DeriveFoldable
-  -- DeriveFunctor
-  -- DeriveGeneric
-  -- DeriveLift
-  -- DeriveTraversable
-  -- ExplicitForAll
-  -- FlexibleContexts
-  -- GeneralizedNewtypeDeriving
-  -- NamedFieldPuns
-  -- ScopedTypeVariables
-  -- StandaloneDeriving
-
   ghc-options:
     -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns
     -Wnoncanonical-monad-instances -Wredundant-constraints -fplugin-opt
@@ -36,6 +24,8 @@ library
   hs-source-dirs:  src
   exposed-modules:
     Cardano.Node.Socket.Emulator
+    Cardano.Node.Socket.Emulator.CLI
+    Cardano.Node.Socket.Emulator.Configuration
     Cardano.Node.Socket.Emulator.Mock
     Cardano.Node.Socket.Emulator.Params
     Cardano.Node.Socket.Emulator.Query
@@ -54,16 +44,13 @@ library
     , clb
     , freer-extras  ^>=1.3.0
 
-  -- , cardano-node-emulator  ^>=1.3.0
-  -- , plutus-ledger          ^>=1.3.0
-  -- , plutus-script-utils    ^>=1.3.0
-
   --------------------------
   -- Other IOG dependencies
   --------------------------
   build-depends:
     , cardano-api:{cardano-api, internal}
     , cardano-binary
+    , cardano-data
     , cardano-ledger-api
     , cardano-ledger-byron
     , cardano-ledger-core:{cardano-ledger-core, testlib}
@@ -76,6 +63,7 @@ library
     , io-classes
     , iohk-monitoring
     , memory
+    , optparse-applicative-fork
     , ouroboros-consensus
     , ouroboros-consensus-cardano
     , ouroboros-consensus-diffusion
@@ -90,7 +78,6 @@ library
     , strict-sop-core
     , typed-protocols
 
-  -- , cardano-api:{cardano-api, internal}                         ^>=8.46
   ------------------------
   -- Non-IOG dependencies
   ------------------------
@@ -103,6 +90,8 @@ library
     , containers
     , contra-tracer
     , data-default
+    , directory
+    , filepath
     , freer-simple
     , lens
     , mtl
@@ -113,6 +102,7 @@ library
     , text
     , time
     , time-units
+    , yaml
 
 executable cardano-node-socket-emulator
   import:           lang
@@ -123,5 +113,6 @@ executable cardano-node-socket-emulator
   build-depends:    iohk-monitoring
   build-depends:
     , base           >=4.9 && <5
+    , containers
     , data-default
     , prettyprinter
