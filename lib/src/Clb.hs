@@ -77,6 +77,7 @@ where
 
 import Cardano.Api (shelleyBasedEra)
 import Cardano.Api qualified as Api
+import Cardano.Api.Ledger.Lens (mkAdaValue)
 import Cardano.Api.Shelley qualified as C
 import Cardano.Binary qualified as CBOR
 import Cardano.Crypto.DSIGN qualified as Crypto
@@ -231,11 +232,13 @@ initClb ::
   ClbConfig era ->
   Api.Value ->
   Api.Value ->
+  Maybe [(L.Addr L.StandardCrypto, L.Coin)] ->
   ClbState era
 initClb
   cfg@ClbConfig {clbConfigProtocol = pparams, clbConfigConfig = tc}
   _initVal
-  walletFunds =
+  walletFunds
+  mInitFunds =
     ClbState
       { _emulatedLedgerState = setUtxo pparams utxos (initialState pparams tc)
       , _mockDatums = M.empty
@@ -246,10 +249,21 @@ initClb
       }
     where
       utxos :: L.UTxO (CardanoLedgerEra era)
-      utxos = L.UTxO $ M.fromList $ mkGenesis walletFunds <$> [1 .. 10]
+      utxos = case mInitFunds of
+        Just shelleyInitFunds -> L.UTxO $ M.fromList $ mkGenesis $ zip shelleyInitFunds [1 ..]
+        Nothing -> L.UTxO $ M.fromList $ mkWalletGenesis walletFunds <$> [1 .. 10]
 
-      mkGenesis :: Api.Value -> Integer -> (L.TxIn L.StandardCrypto, Core.TxOut (C.ShelleyLedgerEra era))
-      mkGenesis walletFund wallet =
+      mkGenesis ::
+        [((L.Addr L.StandardCrypto, L.Coin), Integer)] ->
+        [(L.TxIn L.StandardCrypto, Core.TxOut (C.ShelleyLedgerEra era))]
+      mkGenesis = fmap $
+        \((a, c), i) ->
+          ( L.mkTxInPartial genesisTxId i
+          , L.mkBasicTxOut a $ mkAdaValue (shelleyBasedEra @era) c
+          )
+
+      mkWalletGenesis :: Api.Value -> Integer -> (L.TxIn L.StandardCrypto, Core.TxOut (C.ShelleyLedgerEra era))
+      mkWalletGenesis walletFund wallet =
         ( L.mkTxInPartial genesisTxId wallet
         , L.mkBasicTxOut
             (mkAddr' $ intToKeyPair wallet)

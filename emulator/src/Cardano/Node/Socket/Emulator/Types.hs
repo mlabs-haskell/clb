@@ -23,6 +23,7 @@ import Cardano.Chain.Slotting (EpochSlots (..))
 import Cardano.Ledger.Block qualified as CL
 import Cardano.Ledger.Era qualified as CL
 import Cardano.Ledger.Shelley.API (Coin (Coin), LedgerEnv (ledgerSlotNo), Nonce (NeutralNonce), extractTx, unsafeMakeValidated)
+import Cardano.Ledger.Shelley.Genesis qualified as SG
 import Codec.Serialise (DeserialiseFailure)
 import Codec.Serialise qualified as CBOR
 import Control.Concurrent (MVar, modifyMVar_, putMVar, readMVar, takeMVar)
@@ -43,6 +44,7 @@ import Data.Coerce (coerce)
 import Data.Default (Default, def)
 import Data.Foldable (toList)
 import Data.Functor ((<&>))
+import Data.ListMap qualified as LM
 import Data.Map qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.Text qualified as Text
@@ -92,7 +94,17 @@ import Cardano.Binary qualified as CBOR
 import Cardano.Api.Address (AddressInEra)
 import Cardano.Protocol.TPraos.BHeader
 import Cardano.Protocol.TPraos.OCert (KESPeriod (..))
-import Clb (Block, ClbConfig, ClbState, ClbT (unwrapClbT), OnChainTx (..), emulatedLedgerState, initClb, unwrapClbT)
+import Clb (
+  Block,
+  ClbConfig (ClbConfig),
+  ClbState,
+  ClbT (unwrapClbT),
+  OnChainTx (..),
+  clbConfigConfig,
+  emulatedLedgerState,
+  initClb,
+  unwrapClbT,
+ )
 import Clb.ClbLedgerState (currentBlock, getSlot, ledgerEnv)
 import Test.Cardano.Ledger.Common
 import Test.Cardano.Ledger.Shelley.Constants (defaultConstants)
@@ -109,6 +121,8 @@ import Control.Exception (Exception)
 import Control.Monad.State.Lazy (StateT (runStateT), runState)
 import Data.Base16.Types qualified as B16
 import Data.ByteString.Base16 qualified as B16
+
+import Cardano.Ledger.Shelley.Transition qualified as T
 
 type Tip = Ouroboros.Tip (CardanoBlock StandardCrypto)
 
@@ -221,12 +235,13 @@ initialChainState ::
   ) =>
   ClbConfig era ->
   m (SocketEmulatorState era)
-initialChainState params =
+initialChainState params@ClbConfig {clbConfigConfig} =
   fromEmulatorChainState $
-    initClb params _dummyTotalNotUsedNow perWallet
+    initClb params _dummyTotalNotUsedNow perWallet (Just initialFunds)
   where
     _dummyTotalNotUsedNow = lovelaceToValue $ Coin 1_000_000_000_000
     perWallet = lovelaceToValue $ Coin 1_000_000_000
+    initialFunds = LM.toList $ clbConfigConfig ^. (T.tcShelleyGenesisL . SG.sgInitialFundsL)
 
 getChannel :: (MonadIO m) => MVar (AppState era) -> m (TChan (Block era))
 getChannel mv = liftIO (readMVar mv) <&> view (socketEmulatorState . channel)
