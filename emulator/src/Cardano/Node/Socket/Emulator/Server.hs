@@ -640,6 +640,7 @@ submitTx ::
   IO (TxSubmission.SubmitResult (ApplyTxErr block))
 submitTx state tx = case C.fromConsensusGenTx tx of
   C.TxInMode C.ShelleyBasedEraConway shelleyTx -> do
+    putStrLn $ "New tx: " ++ show tx
     AppState
       (SocketEmulatorState clbState@(ClbState chainState _ _ _ _ _) _ _)
       _
@@ -663,7 +664,9 @@ submitTx state tx = case C.fromConsensusGenTx tx of
                 (addTxToPool ctx . (emulatedLedgerState .~ ls'))
           )
         pure TxSubmission.SubmitSuccess
-  _ -> pure TxSubmission.SubmitSuccess
+  _ -> do
+    putStrLn "Unexpected tx! Misleading SubmitSuccess"
+    pure TxSubmission.SubmitSuccess
 
 -- should be SubmitFail HardForkApplyTxErrWrongEra, but the Mismatch type is complicated
 
