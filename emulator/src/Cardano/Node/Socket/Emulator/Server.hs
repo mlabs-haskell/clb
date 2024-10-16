@@ -664,8 +664,11 @@ submitTx state tx = case C.fromConsensusGenTx tx of
                 (addTxToPool ctx . (emulatedLedgerState .~ ls'))
           )
         pure TxSubmission.SubmitSuccess
-  _ -> do
-    putStrLn "Unexpected tx! Misleading SubmitSuccess"
+  C.TxInMode era _ -> do
+    putStrLn $ "Unsupported era: " <> show era <> ", misleading SubmitSuccess"
+    pure TxSubmission.SubmitSuccess
+  C.TxInByronSpecial _ -> do
+    putStrLn "Unexpected TxInByronSpecial! Misleading SubmitSuccess."
     pure TxSubmission.SubmitSuccess
 
 -- should be SubmitFail HardForkApplyTxErrWrongEra, but the Mismatch type is complicated
