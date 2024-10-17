@@ -20,7 +20,7 @@ import Cardano.Node.Socket.Emulator.Types (
  )
 import Cardano.Slotting.EpochInfo (epochInfoEpoch)
 import Cardano.Slotting.Slot (WithOrigin (..))
-import Cardano.Slotting.Time (SlotLength, mkSlotLength)
+import Cardano.Slotting.Time (RelativeTime (RelativeTime), SlotLength, mkSlotLength)
 import Clb (ClbT, emulatedLedgerState, getClbConfig, getCurrentSlot, getGlobals, getStakePools, getUtxosAt, logInfo, txOutRefAt)
 import Clb.ClbLedgerState (memPoolState)
 import Clb.MockConfig (ClbConfig (..))
@@ -42,13 +42,17 @@ import Data.SOP.Counting qualified as Ouroboros
 import Data.SOP.NonEmpty qualified as Ouroboros
 import Data.SOP.Strict (NP (Nil, (:*)), NS (S, Z))
 import Data.Set qualified as Set
-import Ouroboros.Consensus.Block (EpochSize, GenesisWindow (..))
+import Ouroboros.Consensus.Block (EpochNo (EpochNo), EpochSize, GenesisWindow (..), SlotNo (SlotNo))
 import Ouroboros.Consensus.Cardano.Block (BlockQuery (..), CardanoBlock)
 import Ouroboros.Consensus.HardFork.Combinator (QueryHardFork (..))
 import Ouroboros.Consensus.HardFork.Combinator qualified as Consensus
 import Ouroboros.Consensus.HardFork.History (EraParams (..))
 import Ouroboros.Consensus.HardFork.History qualified as Ouroboros
-import Ouroboros.Consensus.HardFork.History.Summary (EraSummary (..), Summary (..))
+import Ouroboros.Consensus.HardFork.History.Summary (
+  Bound (..),
+  EraSummary (..),
+  Summary (..),
+ )
 import Ouroboros.Consensus.Ledger.Query (Query (..))
 import Ouroboros.Consensus.Protocol.Praos (Praos)
 import Ouroboros.Consensus.Shelley.Eras (ConwayEra, StandardCrypto)
@@ -129,21 +133,21 @@ emulatorEraHistory params = C.EraHistory (Ouroboros.mkInterpreter $ Ouroboros.su
     one =
       Ouroboros.nonEmptyHead $
         Ouroboros.getSummary $
-          skipSummary emulatorEpochSize (slotLength params) emulatorGenesisWindow
+          skipSummary Ouroboros.initBound emulatorEpochSize (slotLength params) emulatorGenesisWindow
     last =
       Ouroboros.nonEmptyHead $
         Ouroboros.getSummary $
-          Ouroboros.neverForksSummary emulatorEpochSize (slotLength params) emulatorGenesisWindow
+          skipSummary lastEndBound emulatorEpochSize (slotLength params) emulatorGenesisWindow
     list = Ouroboros.Exactly $ K one :* K one :* K one :* K one :* K one :* K one :* K last :* Nil
 
 -- | 'Summary' for a ledger that never forks
-skipSummary :: EpochSize -> SlotLength -> GenesisWindow -> Summary '[x]
-skipSummary epochSize slotLen genesisWindow =
+skipSummary :: Bound -> EpochSize -> SlotLength -> GenesisWindow -> Summary '[x]
+skipSummary endBound epochSize slotLen genesisWindow =
   Summary $
     Ouroboros.NonEmptyOne $
       EraSummary
         { eraStart = Ouroboros.initBound
-        , eraEnd = Ouroboros.EraEnd Ouroboros.initBound
+        , eraEnd = Ouroboros.EraEnd endBound
         , eraParams =
             EraParams
               { eraEpochSize = epochSize
@@ -152,6 +156,14 @@ skipSummary epochSize slotLen genesisWindow =
               , eraGenesisWin = genesisWindow
               }
         }
+
+lastEndBound :: Bound
+lastEndBound =
+  Bound
+    { boundTime = RelativeTime 50
+    , boundSlot = SlotNo 1
+    , boundEpoch = EpochNo 500
+    }
 
 emulatorGenesisWindow :: GenesisWindow
 emulatorGenesisWindow = GenesisWindow window
