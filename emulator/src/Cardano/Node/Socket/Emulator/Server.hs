@@ -675,13 +675,17 @@ submitTx state tx = case C.fromConsensusGenTx tx of
       TxSubmission.SubmitFail
         ( Consensus.HardForkApplyTxErrWrongEra $
             Consensus.MismatchEraInfo $
-              Consensus.ML
-                eraInfoByron
-                (S (S (S (S (S (Z (Consensus.LedgerEraInfo eraInfoConway)))))))
+              Consensus.MS $
+                Consensus.MS $
+                  Consensus.MS $
+                    Consensus.MS $
+                      Consensus.MS $
+                        Consensus.ML
+                          eraInfoBabbage
+                          (Z (Consensus.LedgerEraInfo eraInfoConway))
         )
   C.TxInByronSpecial _ -> do
-    putStrLn "Unexpected TxInByronSpecial! Misleading SubmitSuccess."
-    -- pure TxSubmission.SubmitSuccess
+    putStrLn "Unexpected TxInByronSpecial!"
     pure $
       TxSubmission.SubmitFail
         ( Consensus.HardForkApplyTxErrWrongEra $
@@ -700,8 +704,8 @@ submitTx state tx = case C.fromConsensusGenTx tx of
 eraInfoConway :: Consensus.SingleEraInfo (ShelleyBlock (Praos StandardCrypto) StandardConway)
 eraInfoConway = Consensus.singleEraInfo (Proxy @(ShelleyBlock (Praos StandardCrypto) StandardConway))
 
-eraInfoBabbage :: Consensus.SingleEraInfo (ShelleyBlock (TPraos StandardCrypto) StandardBabbage)
-eraInfoBabbage = Consensus.singleEraInfo (Proxy @(ShelleyBlock (TPraos StandardCrypto) StandardBabbage))
+eraInfoBabbage :: Consensus.SingleEraInfo (ShelleyBlock (Praos StandardCrypto) StandardBabbage)
+eraInfoBabbage = Consensus.singleEraInfo (Proxy @(ShelleyBlock (Praos StandardCrypto) StandardBabbage))
 
 eraInfoShelley :: Consensus.SingleEraInfo (ShelleyBlock (TPraos StandardCrypto) StandardShelley)
 eraInfoShelley = Consensus.singleEraInfo (Proxy @(ShelleyBlock (TPraos StandardCrypto) StandardShelley))
