@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeOperators #-}
@@ -41,11 +42,13 @@ import Data.SOP.Counting qualified as Ouroboros
 import Data.SOP.NonEmpty qualified as Ouroboros
 import Data.SOP.Strict (NP (Nil, (:*)), NS (S, Z))
 import Data.Set qualified as Set
-import Ouroboros.Consensus.Block (GenesisWindow (..))
+import Ouroboros.Consensus.Block (EpochSize, GenesisWindow (..))
 import Ouroboros.Consensus.Cardano.Block (BlockQuery (..), CardanoBlock)
 import Ouroboros.Consensus.HardFork.Combinator (QueryHardFork (..))
 import Ouroboros.Consensus.HardFork.Combinator qualified as Consensus
+import Ouroboros.Consensus.HardFork.History (EraParams (..))
 import Ouroboros.Consensus.HardFork.History qualified as Ouroboros
+import Ouroboros.Consensus.HardFork.History.Summary (EraSummary (..), Summary (..))
 import Ouroboros.Consensus.Ledger.Query (Query (..))
 import Ouroboros.Consensus.Protocol.Praos (Praos)
 import Ouroboros.Consensus.Shelley.Eras (ConwayEra, StandardCrypto)
@@ -126,9 +129,29 @@ emulatorEraHistory params = C.EraHistory (Ouroboros.mkInterpreter $ Ouroboros.su
     one =
       Ouroboros.nonEmptyHead $
         Ouroboros.getSummary $
-          -- Ouroboros.neverForksSummary (pEpochSize params) (slotLength params) emulatorGenesisWindow
+          skipSummary emulatorEpochSize (slotLength params) emulatorGenesisWindow
+    last =
+      Ouroboros.nonEmptyHead $
+        Ouroboros.getSummary $
           Ouroboros.neverForksSummary emulatorEpochSize (slotLength params) emulatorGenesisWindow
-    list = Ouroboros.Exactly $ K one :* K one :* K one :* K one :* K one :* K one :* K one :* Nil
+    list = Ouroboros.Exactly $ K last :* K one :* K one :* K one :* K one :* K one :* K one :* Nil
+
+-- | 'Summary' for a ledger that never forks
+skipSummary :: EpochSize -> SlotLength -> GenesisWindow -> Summary '[x]
+skipSummary epochSize slotLen genesisWindow =
+  Summary $
+    Ouroboros.NonEmptyOne $
+      EraSummary
+        { eraStart = Ouroboros.initBound
+        , eraEnd = Ouroboros.EraEnd Ouroboros.initBound
+        , eraParams =
+            EraParams
+              { eraEpochSize = epochSize
+              , eraSlotLength = slotLen
+              , eraSafeZone = Ouroboros.UnsafeIndefiniteSafeZone
+              , eraGenesisWin = genesisWindow
+              }
+        }
 
 emulatorGenesisWindow :: GenesisWindow
 emulatorGenesisWindow = GenesisWindow window
