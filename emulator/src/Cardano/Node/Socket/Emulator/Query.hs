@@ -134,7 +134,7 @@ emulatorEraHistory params = C.EraHistory (Ouroboros.mkInterpreter $ Ouroboros.su
       Ouroboros.nonEmptyHead $
         Ouroboros.getSummary $
           Ouroboros.neverForksSummary emulatorEpochSize (slotLength params) emulatorGenesisWindow
-    list = Ouroboros.Exactly $ K last :* K one :* K one :* K one :* K one :* K one :* K one :* Nil
+    list = Ouroboros.Exactly $ K one :* K one :* K one :* K one :* K one :* K one :* K last :* Nil
 
 -- | 'Summary' for a ledger that never forks
 skipSummary :: EpochSize -> SlotLength -> GenesisWindow -> Summary '[x]
