@@ -58,11 +58,11 @@ import Cardano.BM.Data.Trace (Trace)
 import Cardano.Slotting.Slot (SlotNo (..), WithOrigin (..))
 
 -- import Ledger (Block, CardanoTx (..), Slot (..))
-import Ouroboros.Consensus.Cardano.Block (CardanoBlock, ConwayEra)
+import Ouroboros.Consensus.Cardano.Block (CardanoBlock, CardanoEras, ConwayEra, StandardBabbage, StandardConway)
 import Ouroboros.Consensus.HardFork.Combinator qualified as Consensus
 import Ouroboros.Consensus.Ledger.Query (Query (..))
 import Ouroboros.Consensus.Ledger.SupportsMempool (ApplyTxErr)
-import Ouroboros.Consensus.Shelley.Eras (StandardCrypto)
+import Ouroboros.Consensus.Shelley.Eras (StandardCrypto, StandardShelley)
 import Ouroboros.Consensus.Shelley.Ledger qualified as Shelley
 import Ouroboros.Consensus.TypeFamilyWrappers (WrapApplyTxErr (WrapApplyTxErr))
 import Ouroboros.Network.Block (Point (..), pointSlot)
@@ -131,6 +131,11 @@ import Cardano.Node.Socket.Emulator.Types (
 import Clb (Block, ClbState (ClbState), ClbT, ValidationResult (..), addTxToPool, applyTx, emulatedLedgerState, unwrapClbT, validateTx)
 import Clb.TimeSlot (Slot)
 import Control.Monad.State (StateT (runStateT))
+import Data.Data (Proxy (..))
+import Ouroboros.Consensus.Byron.Ledger.Block (ByronBlock)
+import Ouroboros.Consensus.Protocol.Praos (Praos)
+import Ouroboros.Consensus.Protocol.TPraos (TPraos)
+import Ouroboros.Consensus.Shelley.Ledger.Block (ShelleyBlock)
 
 type EmulatorMsg = String
 data CommandChannel = CommandChannel
@@ -665,11 +670,44 @@ submitTx state tx = case C.fromConsensusGenTx tx of
           )
         pure TxSubmission.SubmitSuccess
   C.TxInMode era _ -> do
-    putStrLn $ "Unsupported era: " <> show era <> ", misleading SubmitSuccess"
-    pure TxSubmission.SubmitSuccess
+    putStrLn $ "Unsupported era: " <> show era
+    pure $
+      TxSubmission.SubmitFail
+        ( Consensus.HardForkApplyTxErrWrongEra $
+            Consensus.MismatchEraInfo $
+              Consensus.ML
+                eraInfoByron
+                (S (S (S (S (S (Z (Consensus.LedgerEraInfo eraInfoConway)))))))
+        )
   C.TxInByronSpecial _ -> do
     putStrLn "Unexpected TxInByronSpecial! Misleading SubmitSuccess."
-    pure TxSubmission.SubmitSuccess
+    -- pure TxSubmission.SubmitSuccess
+    pure $
+      TxSubmission.SubmitFail
+        ( Consensus.HardForkApplyTxErrWrongEra $
+            Consensus.MismatchEraInfo $
+              Consensus.ML
+                eraInfoByron
+                (S (S (S (S (S (Z (Consensus.LedgerEraInfo eraInfoConway)))))))
+        )
+
+-- -- | Applying a Byron thing to a Shelley ledger
+-- exampleEraMismatchShelley :: Consensus.MismatchEraInfo (CardanoEras StandardCrypto)
+-- exampleEraMismatchShelley =
+--     Consensus.MismatchEraInfo $ Consensus.ML eraInfoByron
+--       (S ( S (S (S (S (Z (Consensus.LedgerEraInfo eraInfoConway)))))))
+
+eraInfoConway :: Consensus.SingleEraInfo (ShelleyBlock (Praos StandardCrypto) StandardConway)
+eraInfoConway = Consensus.singleEraInfo (Proxy @(ShelleyBlock (Praos StandardCrypto) StandardConway))
+
+eraInfoBabbage :: Consensus.SingleEraInfo (ShelleyBlock (TPraos StandardCrypto) StandardBabbage)
+eraInfoBabbage = Consensus.singleEraInfo (Proxy @(ShelleyBlock (TPraos StandardCrypto) StandardBabbage))
+
+eraInfoShelley :: Consensus.SingleEraInfo (ShelleyBlock (TPraos StandardCrypto) StandardShelley)
+eraInfoShelley = Consensus.singleEraInfo (Proxy @(ShelleyBlock (TPraos StandardCrypto) StandardShelley))
+
+eraInfoByron :: Consensus.SingleEraInfo ByronBlock
+eraInfoByron = Consensus.singleEraInfo (Proxy @ByronBlock)
 
 -- should be SubmitFail HardForkApplyTxErrWrongEra, but the Mismatch type is complicated
 
