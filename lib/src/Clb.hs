@@ -133,7 +133,8 @@ import Data.Text (Text)
 import PlutusLedgerApi.V1 qualified as P (Credential, Datum, DatumHash, TxOutRef)
 import PlutusLedgerApi.V1 qualified as PV1
 import PlutusLedgerApi.V2 qualified as PV2
-import Prettyprinter (Doc, Pretty, colon, fillSep, hang, indent, pretty, vcat, vsep, (<+>))
+import Prettyprinter (Doc, LayoutOptions (layoutPageWidth), PageWidth (AvailablePerLine), Pretty, colon, defaultLayoutOptions, fillSep, hang, indent, layoutPretty, pretty, vcat, vsep, (<+>))
+import Prettyprinter.Render.String (renderString)
 import Test.Cardano.Ledger.Core.KeyPair qualified as TL
 import Text.Show.Pretty (ppShow)
 
@@ -577,14 +578,23 @@ Add them to chain if Successful, otherwise just dump them.
 Thus creating new Block
 Then updates currentBlock @EmulatedLedgerState to latest Block
 -}
-processBlock :: (Monad m, IsCardanoLedgerEra era) => ClbT era m (Block era)
+processBlock :: (Monad m, IsCardanoLedgerEra era) => ClbT era m (Block era, String)
 processBlock = do
+  -- The new block
   logInfo $ LogEntry Info "process block..."
   poolTxs <- gets _txPool
   newBlock <- catMaybes <$> mapM (processSingleTx . getEmulatorEraTx) poolTxs
   modify (over txPool (const mempty)) -- Clears txPool
   modify (over emulatedLedgerState (over currentBlock (const newBlock))) -- Update to latest Block
-  return newBlock
+  -- Emulator Logs
+  theLog <- gets _mockInfo
+  modify (over mockInfo (const mempty))
+  let logDoc = ppLog theLog
+  let options = defaultLayoutOptions {layoutPageWidth = AvailablePerLine 150 1.0}
+  let logString = renderString $ layoutPretty options logDoc
+  let mockLog = "\nEmulator log :\n--------------\n" <> logString
+
+  return (newBlock, mockLog)
 
 processSingleTx :: (Monad m, IsCardanoLedgerEra era) => C.Tx era -> ClbT era m (Maybe (OnChainTx era))
 processSingleTx tx = validateTx tx >>= commitTx

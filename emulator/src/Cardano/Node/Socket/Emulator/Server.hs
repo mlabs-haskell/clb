@@ -188,11 +188,15 @@ processBlock :: (MonadIO m) => ServerHandler -> m (Block C.ConwayEra)
 processBlock ServerHandler {shCommandChannel} = do
   liftIO $ atomically $ writeTQueue (ccCommand shCommandChannel) ProcessBlock
   -- Wait for the server to finish processing blocks.
-  liftIO $
-    atomically $
-      readTQueue (ccResponse shCommandChannel) >>= \case
-        BlockAdded block -> pure block
-        _ -> retry
+  b <-
+    liftIO $
+      atomically $
+        readTQueue (ccResponse shCommandChannel) >>= \case
+          BlockAdded block -> do
+            pure block
+          _ -> retry
+  liftIO (putStrLn $ "new block has been produced:" <> show b)
+  pure b
 
 modifySlot :: (MonadIO m) => (Slot -> Slot) -> ServerHandler -> m Slot
 modifySlot f ServerHandler {shCommandChannel} = do
@@ -246,21 +250,29 @@ handleCommand ::
   CommandChannel ->
   MVar (AppState C.ConwayEra) ->
   m ()
-handleCommand trace CommandChannel {ccCommand, ccResponse} mvAppState =
-  liftIO $
-    atomically (readTQueue ccCommand) >>= \case
-      AddTx tx -> process $ void $ E.sendTx tx
-      ModifySlot f -> do
-        s <- process $ E.modifySlot f
-        atomically $
-          writeTQueue ccResponse (SlotChanged s)
-      ProcessBlock -> do
-        block <- process E.processBlock
-        setTip mvAppState block
-        ch <- getChannel mvAppState
-        atomically $ do
-          writeTChan ch block
-          writeTQueue ccResponse (BlockAdded block)
+handleCommand trace CommandChannel {ccCommand, ccResponse} mvAppState = do
+  mLogs <-
+    liftIO $
+      atomically (readTQueue ccCommand) >>= \case
+        AddTx tx -> do
+          process $ void $ E.sendTx tx
+          pure Nothing
+        ModifySlot f -> do
+          s <- process $ E.modifySlot f
+          atomically $
+            writeTQueue ccResponse (SlotChanged s)
+          pure Nothing
+        ProcessBlock -> do
+          (block, logs) <- process E.processBlock
+          setTip mvAppState block
+          ch <- getChannel mvAppState
+          atomically $ do
+            writeTChan ch block
+            writeTQueue ccResponse (BlockAdded block)
+          pure $ Just logs
+  case mLogs of
+    Nothing -> pure ()
+    Just logs -> liftIO $ putStrLn logs
   where
     process :: ClbT C.ConwayEra IO a -> IO a
     process = processChainEffects trace mvAppState
@@ -646,10 +658,7 @@ submitTx ::
 submitTx state tx = case C.fromConsensusGenTx tx of
   C.TxInMode C.ShelleyBasedEraConway shelleyTx -> do
     putStrLn $ "New tx: " ++ show tx
-    AppState
-      (SocketEmulatorState clbState@(ClbState chainState _ _ _ _ _) _ _)
-      _
-      params <-
+    AppState (SocketEmulatorState clbState@(ClbState chainState _ _ _ _ _) _ _) _ _ <-
       readMVar state
     (res, _state) <- runStateT (unwrapClbT $ Clb.validateTx shelleyTx) clbState
     case res of

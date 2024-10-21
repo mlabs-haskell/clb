@@ -71,7 +71,7 @@ data CheckLimits
 defaultSlotConfig :: SlotConfig
 defaultSlotConfig =
   SlotConfig
-    { scSlotLength = 1000 -- each slot lasts for 1 second
+    { scSlotLength = 5_000 -- each slot lasts for 1 second
     , scSlotZeroTime = 0 -- starts at unix epoch start
     }
 
