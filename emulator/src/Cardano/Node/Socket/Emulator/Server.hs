@@ -9,7 +9,14 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Cardano.Node.Socket.Emulator.Server (ServerHandler, runServerNode, processBlock, modifySlot, addTx, processChainEffects) where
+module Cardano.Node.Socket.Emulator.Server (
+  ServerHandler,
+  runServerNode,
+  processBlock,
+  modifySlot,
+  addTx,
+  processChainEffects,
+) where
 
 import Control.Concurrent (
   MVar,
@@ -255,7 +262,8 @@ handleCommand trace CommandChannel {ccCommand, ccResponse} mvAppState = do
     liftIO $
       atomically (readTQueue ccCommand) >>= \case
         AddTx tx -> do
-          process $ void $ E.sendTx tx
+          liftIO $ putStrLn "----------------------------------->>> AddTx!"
+          -- process $ void $ E.sendTx tx
           pure Nothing
         ModifySlot f -> do
           s <- process $ E.modifySlot f
@@ -658,7 +666,10 @@ submitTx ::
 submitTx state tx = case C.fromConsensusGenTx tx of
   C.TxInMode C.ShelleyBasedEraConway shelleyTx -> do
     putStrLn $ "New tx: " ++ show tx
-    AppState (SocketEmulatorState clbState@(ClbState chainState _ _ _ _ _) _ _) _ _ <-
+    AppState
+      (SocketEmulatorState clbState@(ClbState chainState _ _ _ _ _) _ _)
+      _
+      _ <-
       readMVar state
     (res, _state) <- runStateT (unwrapClbT $ Clb.validateTx shelleyTx) clbState
     case res of

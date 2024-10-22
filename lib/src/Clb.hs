@@ -26,7 +26,7 @@ module Clb (
   txOutRefAt,
   txOutRefAtState,
   txOutRefAtPaymentCred,
-  sendTx,
+  -- sendTx,
   validateTx,
   ValidationResult (..),
   OnChainTx (..),
@@ -63,12 +63,14 @@ module Clb (
   -- * Protocol parameters
   PParams,
 
+  -- * Block producing
+  processBlock,
+
   -- * key utils
   intToKeyPair,
   intToCardanoSk,
   waitSlot,
   modifySlot,
-  processBlock,
   addTxToPool,
   applyTx,
   getStakePools,
@@ -420,26 +422,26 @@ getGlobals = do
       epochInfo
       majorVer
 
--- | Run `applyTx`, if succeed update state and record datums
-sendTx :: forall era m. (Monad m, IsCardanoLedgerEra era) => C.Tx era -> ClbT era m (ValidationResult era)
-sendTx apiTx@(C.ShelleyTx _ tx) = do
-  dumpUtxoState
-  state@ClbState {_emulatedLedgerState} <- get
-  globals <- getGlobals
-  case applyTx ValidateAll globals _emulatedLedgerState tx of
-    Right (newState, vtx) -> do
-      put $ state {_emulatedLedgerState = newState}
-      recordNewDatums
-      return $ Success newState vtx
-    Left err -> return $ Fail tx err
-  where
-    recordNewDatums = do
-      state@ClbState {_mockDatums} <- get
-      let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
-      put $
-        state
-          { _mockDatums = M.union _mockDatums txDatums
-          }
+-- -- | Run `applyTx`, if succeed update state and record datums
+-- sendTx :: forall era m. (Monad m, IsCardanoLedgerEra era) => C.Tx era -> ClbT era m (ValidationResult era)
+-- sendTx apiTx@(C.ShelleyTx _ tx) = do
+--   dumpUtxoState
+--   state@ClbState {_emulatedLedgerState} <- get
+--   globals <- getGlobals
+--   case applyTx ValidateAll globals _emulatedLedgerState tx of
+--     Right (newState, vtx) -> do
+--       put $ state {_emulatedLedgerState = newState}
+--       recordNewDatums
+--       return $ Success newState vtx
+--     Left err -> return $ Fail tx err
+--   where
+--     recordNewDatums = do
+--       state@ClbState {_mockDatums} <- get
+--       let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
+--       put $
+--         state
+--           { _mockDatums = M.union _mockDatums txDatums
+--           }
 
 {- | Given a 'C.TxBody from a 'C.Tx era', return the datums and redeemers along
 with their hashes.
