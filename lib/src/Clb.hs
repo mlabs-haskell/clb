@@ -602,6 +602,8 @@ processSingleTx tx = validateTx tx >>= commitTx
 
 validateTx :: (Monad m, IsCardanoLedgerEra era) => C.Tx era -> ClbT era m (ValidationResult era)
 validateTx (C.ShelleyTx _ tx) = do
+  -- TODO: omit when not needed
+  dumpUtxoState
   ClbState {_emulatedLedgerState} <- get
   globals <- getGlobals
   case applyTx ValidateAll globals _emulatedLedgerState tx of
