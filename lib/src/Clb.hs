@@ -74,10 +74,12 @@ module Clb (
   addTxToPool,
   applyTx,
   getStakePools,
+  -- others
+  scriptDataFromCardanoTxBody,
 )
 where
 
-import Cardano.Api (shelleyBasedEra)
+import Cardano.Api (IsShelleyBasedEra, shelleyBasedEra)
 import Cardano.Api qualified as Api
 import Cardano.Api.Ledger.Lens (mkAdaValue)
 import Cardano.Api.Shelley qualified as C
@@ -584,7 +586,8 @@ Then updates currentBlock @EmulatedLedgerState to latest Block
 processBlock :: (Monad m, IsCardanoLedgerEra era) => ClbT era m (Block era, String)
 processBlock = do
   -- The new block
-  logInfo $ LogEntry Info "process block..."
+  logInfo $ LogEntry Info "process block 123 ..."
+  dumpUtxoState
   poolTxs <- gets _txPool
   newBlock <- catMaybes <$> mapM (processSingleTx . getEmulatorEraTx) poolTxs
   modify (over txPool (const mempty)) -- Clears txPool
@@ -599,9 +602,17 @@ processBlock = do
 
   return (newBlock, mockLog)
 
+-- This is called when we move a tx from mempool into a new block.
 processSingleTx :: (Monad m, IsCardanoLedgerEra era) => C.Tx era -> ClbT era m (Maybe (OnChainTx era))
-processSingleTx tx = validateTx tx >>= commitTx
+-- processSingleTx tx = validateTx tx >>= commitTx
+processSingleTx tx@(C.ShelleyTx _ stx) = do
+  state@ClbState {_mockDatums} <- get
+  let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody tx
+  -- put $ state {_emulatedLedgerState = newState, _mockDatums = M.union _mockDatums txDatums}
+  put $ state {_mockDatums = M.union _mockDatums txDatums}
+  pure $ Just $ OnChainTx $ L.unsafeMakeValidated stx
 
+-- | Validate a tx upon its submission, i.e. before taking it into the mempool.
 validateTx :: (Monad m, IsCardanoLedgerEra era) => C.Tx era -> ClbT era m (ValidationResult era)
 validateTx (C.ShelleyTx _ tx) = do
   -- TODO: omit when not needed
@@ -612,21 +623,21 @@ validateTx (C.ShelleyTx _ tx) = do
     Right (newState, vtx) -> return $ Success newState vtx
     Left err -> return $ Fail tx err
 
-commitTx :: (Monad m, IsCardanoLedgerEra era) => ValidationResult era -> ClbT era m (Maybe (OnChainTx era))
-commitTx (Success newState vtx) = do
-  state@ClbState {_mockDatums} <- get
-  let apiTx = C.ShelleyTx shelleyBasedEra (L.extractTx $ getOnChainTx vtx)
-  let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
-  put $ state {_emulatedLedgerState = newState, _mockDatums = M.union _mockDatums txDatums}
-  pure $ Just vtx
-commitTx (Fail _tx err) = do
-  logError $
-    "Transaction Failed: "
-      <> show err
-  -- TODO: Should we include transaction details ?
-  -- <> " - Transaction Details: "
-  -- <> show tx
-  pure Nothing
+-- commitTx :: (Monad m, IsCardanoLedgerEra era) => ValidationResult era -> ClbT era m (Maybe (OnChainTx era))
+-- commitTx (Success _newState vtx) = do
+--   state@ClbState {_mockDatums} <- get
+--   let apiTx = C.ShelleyTx shelleyBasedEra (L.extractTx $ getOnChainTx vtx)
+--   let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
+--   put $ state {_emulatedLedgerState = newState, _mockDatums = M.union _mockDatums txDatums}
+--   pure $ Just vtx
+-- commitTx (Fail _tx err) = do
+--   logError $
+--     "Transaction Failed: "
+--       <> show err
+--   -- TODO: Should we include transaction details ?
+--   -- <> " - Transaction Details: "
+--   -- <> show tx
+--   pure Nothing
 
 addTxToPool :: CardanoTx era -> ClbState era -> ClbState era
 addTxToPool tx = over txPool (tx :)

@@ -686,7 +686,10 @@ submitTx state tx = case C.fromConsensusGenTx tx of
           ( pure
               . over
                 (socketEmulatorState . emulatorState)
+                -- Here we update the state and put the tx into the pool
+                -- TODO: shall we handle datums here!
                 (addTxToPool ctx . (emulatedLedgerState .~ ls'))
+                -- (addTxToPool ctx)
           )
         pure TxSubmission.SubmitSuccess
   C.TxInMode era _ -> do
