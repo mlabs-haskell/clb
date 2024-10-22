@@ -423,6 +423,7 @@ getGlobals = do
 -- | Run `applyTx`, if succeed update state and record datums
 sendTx :: forall era m. (Monad m, IsCardanoLedgerEra era) => C.Tx era -> ClbT era m (ValidationResult era)
 sendTx apiTx@(C.ShelleyTx _ tx) = do
+  dumpUtxoState
   state@ClbState {_emulatedLedgerState} <- get
   globals <- getGlobals
   case applyTx ValidateAll globals _emulatedLedgerState tx of
@@ -468,7 +469,7 @@ datumHash :: PV2.Datum -> PV2.DatumHash
 datumHash (PV2.Datum (PV2.BuiltinData dat)) =
   transDataHash $ L.hashData $ L.Data @(L.AlonzoEra L.StandardCrypto) dat
 
-dumpUtxoState :: (IsCardanoLedgerEra era) => Clb era ()
+dumpUtxoState :: forall m era. (IsCardanoLedgerEra era, Monad m) => ClbT era m ()
 dumpUtxoState = do
   s <- gets ((^. memPoolState) . _emulatedLedgerState)
   logInfo $ LogEntry Info $ ppShow s
