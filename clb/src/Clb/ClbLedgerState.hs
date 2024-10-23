@@ -13,27 +13,16 @@ import Cardano.Ledger.Shelley.LedgerState qualified as L
 import Cardano.Slotting.Slot (SlotNo (SlotNo))
 import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra)
 import Clb.Params (PParams, TransitionConfig)
-import Clb.Tx (OnChainTx)
+import Clb.Tx (Block, CardanoTx (..))
 import Control.Lens (makeLenses, over, (^.))
 import Data.Default (Default, def)
 import Data.ListMap qualified as ListMap
 import Data.Map.Strict qualified as Map
 
-{- | Emulator block (currently we are just keeping one jumbo block
-that holds all transactions but this might be changed in the future)
-is just a list of validated transactions.
+{- | mempool is just a list of transactions, ordered by the time at which they
+arrived (the head is the latest)
 -}
-type EmulatorBlock era = [OnChainTx era]
-
--- | mempool
 type TxPool era = [CardanoTx era]
-
--- | Cardano tx from any era.
-data CardanoTx era where
-  CardanoTx :: C.Tx era -> C.ShelleyBasedEra era -> CardanoTx era
-
-instance Show (CardanoTx era) where
-  show = const "CardanoTx"
 
 getEmulatorEraTx :: CardanoTx era -> C.Tx era
 getEmulatorEraTx (CardanoTx tx _) = tx
@@ -49,7 +38,7 @@ pattern CardanoEmulatorEraTx tx <- (getEmulatorEraTx -> tx)
 data EmulatedLedgerState era = EmulatedLedgerState
   { _ledgerEnv :: !(L.MempoolEnv (CardanoLedgerEra era))
   , _memPoolState :: !(L.MempoolState (CardanoLedgerEra era))
-  , _currentBlock :: !(EmulatorBlock era)
+  , _currentBlock :: !(Block era)
   }
 
 deriving instance (IsCardanoLedgerEra era) => Show (EmulatedLedgerState era)
@@ -90,7 +79,7 @@ setUtxo params utxo els@EmulatedLedgerState {_memPoolState} = els {_memPoolState
 -- {- | Make a block with all transactions that have been validated in the
 -- current block, add the block to the blockchain, and empty the current block.
 -- -}
--- makeBlock :: EmulatedLedgerState -> EmulatedLedgerState
+-- makeBlock :: EmulatedLedgerState era -> EmulatedLedgerState era
 -- makeBlock state =
 --   state
 --     & currentBlock .~ []

@@ -1,5 +1,15 @@
 {-# LANGUAGE RankNTypes #-}
 
+{-
+CLB emulator notes
+
+CLB emulator can be used in two main modes of operation:
+  - as a Haskell library
+  - as a cardano-node emualator
+
+These two modes have different behaviour.
+
+-}
 module Clb (
   -- * Parameters
   X.defaultBabbageClbConfig,
@@ -79,7 +89,7 @@ module Clb (
 )
 where
 
-import Cardano.Api (IsShelleyBasedEra, shelleyBasedEra)
+import Cardano.Api (shelleyBasedEra)
 import Cardano.Api qualified as Api
 import Cardano.Api.Ledger.Lens (mkAdaValue)
 import Cardano.Api.Shelley qualified as C
@@ -101,14 +111,14 @@ import Cardano.Ledger.Shelley.Core (EraRule)
 import Cardano.Ledger.Slot (SlotNo (..))
 import Cardano.Ledger.TxIn qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo)
-import Clb.ClbLedgerState (CardanoTx, EmulatedLedgerState (..), TxPool, currentBlock, getEmulatorEraTx, initialState, memPoolState, setSlot, setUtxo)
+import Clb.ClbLedgerState (EmulatedLedgerState (..), TxPool, currentBlock, getEmulatorEraTx, initialState, memPoolState, setSlot, setUtxo)
+import Clb.Config (ClbConfig (..))
+import Clb.Config qualified as X (defaultBabbageClbConfig, defaultConwayClbConfig)
 import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra, maryBasedEra)
-import Clb.MockConfig (ClbConfig (..))
-import Clb.MockConfig qualified as X (defaultBabbageClbConfig, defaultConwayClbConfig)
 import Clb.Params (PParams, emulatorShelleyGenesisDefaults)
 import Clb.TimeSlot (Slot (..), SlotConfig (..), slotConfigToEpochInfo)
 import Clb.TimeSlot qualified as TimeSlot
-import Clb.Tx (Block, OnChainTx (..))
+import Clb.Tx (Block, CardanoTx, OnChainTx (..))
 import Control.Arrow (ArrowChoice (..))
 import Control.Lens (makeLenses, over, view, (&), (.~), (^.))
 import Control.Monad (when)

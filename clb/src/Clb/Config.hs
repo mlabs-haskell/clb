@@ -1,6 +1,4 @@
--- | Config for emulator (from PSM)
-module Clb.MockConfig (
-  -- TODO : Rename Module name
+module Clb.Config (
   -- Stat (..),
   ClbConfig (..),
   CheckLimits (..),

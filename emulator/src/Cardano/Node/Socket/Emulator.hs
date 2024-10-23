@@ -21,7 +21,7 @@ import Cardano.Node.Socket.Emulator.Types (
   NodeServerConfig (..),
   initialChainState,
  )
-import Clb.MockConfig (ClbConfig (clbConfigSlotConfig), clbConfigNetworkId, keptBlocks)
+import Clb.Config (ClbConfig (clbConfigSlotConfig), clbConfigNetworkId, keptBlocks)
 import Clb.TimeSlot (SlotConfig (SlotConfig, scSlotLength, scSlotZeroTime))
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forever, void, when)

@@ -23,7 +23,7 @@ import Cardano.Slotting.Slot (WithOrigin (..))
 import Cardano.Slotting.Time (RelativeTime (RelativeTime), SlotLength, mkSlotLength)
 import Clb (ClbT, emulatedLedgerState, getClbConfig, getCurrentSlot, getGlobals, getStakePools, getUtxosAt, logInfo, txOutRefAt)
 import Clb.ClbLedgerState (memPoolState)
-import Clb.MockConfig (ClbConfig (..))
+import Clb.Config (ClbConfig (..))
 import Clb.TimeSlot (
   SlotConfig (scSlotZeroTime),
   emulatorEpochSize,

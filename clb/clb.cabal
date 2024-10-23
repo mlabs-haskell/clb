@@ -8,12 +8,12 @@ maintainer:      ilia@mlabs.city
 author:
   , Ilia Rodionov
   , George Flerovsky
-  , Gregory Gerasev
   , Rajdeep Maity
+  , Gregory Gerasev
 
 synopsis:
-  The Cardano emulator that just works AKA Cardano Ledger Backend (CLB),
-  pronounced /klʌb/.
+  The Cardano emulator that "just works" AKA Cardano Ledger Backend (CLB),
+  pronounced /klʌb/.  A new gen of PSM.
 
 tested-with:     GHC ==9.6.3
 
@@ -53,8 +53,9 @@ library
   exposed-modules:
     Clb
     Clb.ClbLedgerState
+    Clb.Config
     Clb.Era
-    Clb.MockConfig
+    Clb.MemPool
     Clb.Params
     Clb.TimeSlot
     Clb.Tx
