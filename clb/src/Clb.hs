@@ -26,6 +26,7 @@ module Clb (
   mockDatums,
   mockInfo,
   mockFails,
+  chainNewestFirst,
   EmulatedLedgerState (..),
 
   -- * CLB Runner
@@ -111,14 +112,14 @@ import Cardano.Ledger.Shelley.Core (EraRule)
 import Cardano.Ledger.Slot (SlotNo (..))
 import Cardano.Ledger.TxIn qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo)
-import Clb.ClbLedgerState (EmulatedLedgerState (..), TxPool, currentBlock, getEmulatorEraTx, initialState, memPoolState, setSlot, setUtxo)
+import Clb.ClbLedgerState (EmulatedLedgerState (..), TxPool, getEmulatorEraTx, initialState, memPoolState, setSlot, setUtxo)
 import Clb.Config (ClbConfig (..))
 import Clb.Config qualified as X (defaultBabbageClbConfig, defaultConwayClbConfig)
 import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra, maryBasedEra)
 import Clb.Params (PParams, emulatorShelleyGenesisDefaults)
 import Clb.TimeSlot (Slot (..), SlotConfig (..), slotConfigToEpochInfo)
 import Clb.TimeSlot qualified as TimeSlot
-import Clb.Tx (Block, CardanoTx, OnChainTx (..))
+import Clb.Tx (Block, Blockchain, CardanoTx, OnChainTx (..))
 import Control.Arrow (ArrowChoice (..))
 import Control.Lens (makeLenses, over, view, (&), (.~), (^.))
 import Control.Monad (when)
@@ -198,6 +199,7 @@ data ClbState era = ClbState
   , _mockInfo :: !(Log LogEntry)
   , _mockFails :: !(Log FailReason)
   , _txPool :: !(TxPool era)
+  , _chainNewestFirst :: !(Blockchain era)
   }
 
 -- deriving stock (Show)
@@ -261,6 +263,7 @@ initClb
       , _mockInfo = mempty
       , _mockFails = mempty
       , _txPool = mempty
+      , _chainNewestFirst = mempty
       }
     where
       utxos :: L.UTxO (CardanoLedgerEra era)
@@ -526,8 +529,10 @@ applyTx asoValidation globals oldState@EmulatedLedgerState {_ledgerEnv, _memPool
       $ flip runReader globals
         . applySTSOptsEither @stsUsed opts
       $ TRC (_ledgerEnv, _memPoolState, tx)
+  -- TODO: save the tx
   let vtx = OnChainTx $ L.unsafeMakeValidated tx
-  pure (oldState & memPoolState .~ newMempool & over currentBlock (vtx :), vtx)
+  -- pure (oldState & memPoolState .~ newMempool & over currentBlock (vtx :), vtx)
+  pure (oldState & memPoolState .~ newMempool, vtx)
   where
     opts =
       ApplySTSOpts
@@ -588,29 +593,30 @@ toSlot = Slot . fromIntegral . L.unSlotNo
 fromSlot :: Slot -> SlotNo
 fromSlot = fromIntegral . TimeSlot.getSlot
 
-{- | Evaluates all Txs in the pool
-Add them to chain if Successful, otherwise just dump them.
-Thus creating new Block
-Then updates currentBlock @EmulatedLedgerState to latest Block
+{- | Evaluates all Txs in the mem pool and adds valid ones to a new block.
+ Invalid transaxtions are just get dumped.
+ TODO: Then updates currentBlock @EmulatedLedgerState to latest Block
 -}
-processBlock :: (Monad m, IsCardanoLedgerEra era) => ClbT era m (Block era, String)
+processBlock :: (Monad m, IsCardanoLedgerEra era) => ClbT era m (Maybe (Block era, String))
 processBlock = do
-  -- The new block
-  logInfo $ LogEntry Info "process block 123 ..."
-  dumpUtxoState
   poolTxs <- gets _txPool
-  newBlock <- catMaybes <$> mapM (processSingleTx . getEmulatorEraTx) poolTxs
-  modify (over txPool (const mempty)) -- Clears txPool
-  modify (over emulatedLedgerState (over currentBlock (const newBlock))) -- Update to latest Block
-  -- Emulator Logs
-  theLog <- gets _mockInfo
-  modify (over mockInfo (const mempty))
-  let logDoc = ppLog theLog
-  let options = defaultLayoutOptions {layoutPageWidth = AvailablePerLine 150 1.0}
-  let logString = renderString $ layoutPretty options logDoc
-  let mockLog = "\nEmulator log :\n--------------\n" <> logString
-
-  return (newBlock, mockLog)
+  case poolTxs of
+    [] -> return Nothing
+    txs -> do
+      logInfo $ LogEntry Info "Producing a new block."
+      -- dumpUtxoState
+      newBlock <- catMaybes <$> mapM (processSingleTx . getEmulatorEraTx) txs
+      -- TODO: this should be done atomically
+      modify (over txPool (const mempty)) -- Clears txPool
+      modify (over chainNewestFirst (newBlock :)) -- Add the block
+      -- Emulator Logs
+      theLog <- gets _mockInfo
+      modify (over mockInfo (const mempty))
+      let logDoc = ppLog theLog
+      let options = defaultLayoutOptions {layoutPageWidth = AvailablePerLine 150 1.0}
+      let logString = renderString $ layoutPretty options logDoc
+      let mockLog = "\nEmulator log :\n--------------\n" <> logString
+      return $ Just (newBlock, mockLog)
 
 -- This is called when we move a tx from mempool into a new block.
 processSingleTx :: (Monad m, IsCardanoLedgerEra era) => C.Tx era -> ClbT era m (Maybe (OnChainTx era))

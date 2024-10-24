@@ -96,7 +96,9 @@ slotToBeginPOSIXTime SlotConfig {scSlotLength, scSlotZeroTime} (Slot n) =
   let msAfterBegin = n * scSlotLength
    in POSIXTime $ getPOSIXTime scSlotZeroTime + msAfterBegin
 
--- | Get the current slot number
+{- | Get the current slot number. If scSlotZeroTime may produce negative results,
+which is nonsense.
+-}
 currentSlot :: SlotConfig -> Haskell.IO Slot
 currentSlot sc = timeToSlot Haskell.<$> Time.getPOSIXTime
   where

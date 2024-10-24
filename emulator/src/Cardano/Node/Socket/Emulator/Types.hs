@@ -105,7 +105,7 @@ import Clb (
   initClb,
   unwrapClbT,
  )
-import Clb.ClbLedgerState (currentBlock, getSlot, ledgerEnv)
+import Clb.ClbLedgerState (getSlot, ledgerEnv)
 import Test.Cardano.Ledger.Common
 import Test.Cardano.Ledger.Shelley.Constants (defaultConstants)
 import Test.Cardano.Ledger.Shelley.Generator.Presets (coreNodeKeys)
@@ -205,23 +205,6 @@ data AppState era = AppState
 
 makeLenses 'AppState
 
-fromEmulatorChainState :: (MonadIO m, CBOR.ToCBOR (Core.Tx (CardanoLedgerEra era))) => ClbState era -> m (SocketEmulatorState era)
-fromEmulatorChainState state = do
-  ch <- liftIO $ atomically newTChan
-  let chainNewestFirst = [view (emulatedLedgerState . currentBlock) state] -- we don't have blocks yet
-  let currentSlot = view (emulatedLedgerState . ledgerEnv . to ledgerSlotNo) state
-  void $
-    liftIO $
-      mapM_ (atomically . writeTChan ch) chainNewestFirst
-  pure $
-    SocketEmulatorState
-      { _channel = ch
-      , _emulatorState = state
-      , _tip = case listToMaybe chainNewestFirst of
-          Nothing -> Ouroboros.TipGenesis
-          Just block -> Ouroboros.Tip currentSlot (coerce $ blockId block) (coerce currentSlot)
-      }
-
 type CardanoAddress = AddressInEra ConwayEra
 
 {- | 'ChainState' with initial values
@@ -243,6 +226,25 @@ initialChainState params@ClbConfig {clbConfigConfig} =
     perWallet = lovelaceToValue $ Coin 1_000_000_000
     initialFunds = LM.toList $ clbConfigConfig ^. (T.tcShelleyGenesisL . SG.sgInitialFundsL)
 
+    -- fromEmulatorChainState :: (MonadIO m, CBOR.ToCBOR (Core.Tx (CardanoLedgerEra era))) => ClbState era -> m (SocketEmulatorState era)
+    fromEmulatorChainState :: ClbState era -> m (SocketEmulatorState era)
+    fromEmulatorChainState state = do
+      ch <- liftIO $ atomically newTChan
+      -- let chainNewestFirst = [view (emulatedLedgerState . currentBlock) state] -- we don't have blocks yet
+      let currentSlot = view (emulatedLedgerState . ledgerEnv . to ledgerSlotNo) state
+      -- void $
+      --   liftIO $
+      --     mapM_ (atomically . writeTChan ch) chainNewestFirst
+      pure $
+        SocketEmulatorState
+          { _channel = ch
+          , _emulatorState = state
+          , _tip = Ouroboros.TipGenesis
+          -- case listToMaybe chainNewestFirst of
+          -- Nothing -> Ouroboros.TipGenesis
+          -- Just block -> Ouroboros.Tip currentSlot (coerce $ blockId block) (coerce currentSlot)
+          }
+
 getChannel :: (MonadIO m) => MVar (AppState era) -> m (TChan (Block era))
 getChannel mv = liftIO (readMVar mv) <&> view (socketEmulatorState . channel)
 
@@ -253,7 +255,6 @@ getTip mv = liftIO (readMVar mv) <&> view (socketEmulatorState . tip)
 -- Set the new tip
 setTip :: (MonadIO m, CBOR.ToCBOR (Core.Tx (CardanoLedgerEra era))) => MVar (AppState era) -> Block era -> m ()
 setTip mv block = liftIO $ modifyMVar_ mv $ \oldState -> do
-  -- let slot = oldState ^. socketEmulatorState . emulatorState . esChainState . EC.ledgerState . to getSlot
   let slot =
         getSlot $
           oldState

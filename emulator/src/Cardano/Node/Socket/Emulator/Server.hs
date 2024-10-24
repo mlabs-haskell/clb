@@ -14,7 +14,7 @@ module Cardano.Node.Socket.Emulator.Server (
   runServerNode,
   processBlock,
   modifySlot,
-  addTx,
+  -- addTx,
   processChainEffects,
 ) where
 
@@ -43,7 +43,7 @@ import Control.Concurrent.STM (
  )
 import Control.Exception (throwIO)
 import Control.Lens (over, (.~), (^.))
-import Control.Monad (forever, void)
+import Control.Monad (forever, void, when)
 import Control.Monad.Freer (send)
 import Control.Monad.Freer.Extras.Log (LogMsg (LMessage))
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -57,7 +57,7 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Coerce (coerce)
 import Data.Foldable (traverse_)
 import Data.List (intersect)
-import Data.Maybe (listToMaybe)
+import Data.Maybe (isJust, listToMaybe)
 import Data.SOP.Strict (NS (S, Z))
 import Data.Void (Void)
 
@@ -171,39 +171,47 @@ data ServerHandler = ServerHandler
      returned ServerHandler
 -}
 data ServerCommand where
-  ProcessBlock :: ServerCommand
-  ModifySlot :: (Slot -> Slot) -> ServerCommand
-  AddTx :: (C.Tx C.ConwayEra) -> ServerCommand
+  ProcessBlock ::
+    -- | Try to produce a new block.
+    ServerCommand
+  ModifySlot ::
+    (Slot -> Slot) ->
+    -- | Switch to some (usually next) slot.
+    -- AddTx :: (C.Tx C.ConwayEra) -> ServerCommand
+    ServerCommand
 
 instance Show ServerCommand where
   show = \case
     ProcessBlock -> "ProcessBlock"
     ModifySlot _ -> "ModifySlot"
-    AddTx t -> "AddTx " <> show t
+
+-- AddTx t -> "AddTx " <> show t
 
 {- | The response from the server. Can be used for the information
      passed back, or for synchronisation.
 -}
 data ServerResponse
   = -- A block was added. We are using this for synchronization.
-    BlockAdded (Block C.ConwayEra)
+    BlockAdded (Maybe (Block C.ConwayEra))
   | SlotChanged Slot
 
 -- deriving (Show)
 
-processBlock :: (MonadIO m) => ServerHandler -> m (Block C.ConwayEra)
+processBlock :: (MonadIO m) => ServerHandler -> m (Maybe (Block C.ConwayEra))
 processBlock ServerHandler {shCommandChannel} = do
   liftIO $ atomically $ writeTQueue (ccCommand shCommandChannel) ProcessBlock
   -- Wait for the server to finish processing blocks.
-  b <-
+  mBlock <-
     liftIO $
       atomically $
         readTQueue (ccResponse shCommandChannel) >>= \case
           BlockAdded block -> do
             pure block
           _ -> retry
-  liftIO (putStrLn $ "new block has been produced:" <> show b)
-  pure b
+  case mBlock of
+    Just b -> liftIO $ putStrLn $ "A new block has been produced:" <> show b
+    Nothing -> pure ()
+  pure mBlock
 
 modifySlot :: (MonadIO m) => (Slot -> Slot) -> ServerHandler -> m Slot
 modifySlot f ServerHandler {shCommandChannel} = do
@@ -215,9 +223,9 @@ modifySlot f ServerHandler {shCommandChannel} = do
         SlotChanged slot -> pure slot
         _ -> retry
 
-addTx :: (MonadIO m) => ServerHandler -> C.Tx C.ConwayEra -> m ()
-addTx ServerHandler {shCommandChannel} tx = do
-  liftIO $ atomically $ writeTQueue (ccCommand shCommandChannel) $ AddTx tx
+-- addTx :: (MonadIO m) => ServerHandler -> C.Tx C.ConwayEra -> m ()
+-- addTx ServerHandler {shCommandChannel} tx = do
+--   liftIO $ atomically $ writeTQueue (ccCommand shCommandChannel) $ AddTx tx
 
 {- Create a thread that keeps the number of blocks in the channel to the maximum
    limit of K -}
@@ -261,23 +269,27 @@ handleCommand trace CommandChannel {ccCommand, ccResponse} mvAppState = do
   mLogs <-
     liftIO $
       atomically (readTQueue ccCommand) >>= \case
-        AddTx tx -> do
-          liftIO $ putStrLn "----------------------------------->>> AddTx!"
-          -- process $ void $ E.sendTx tx
-          pure Nothing
+        -- AddTx tx -> do
+        --   -- process $ void $ E.sendTx tx
+        --   pure Nothing
         ModifySlot f -> do
           s <- process $ E.modifySlot f
           atomically $
             writeTQueue ccResponse (SlotChanged s)
           pure Nothing
         ProcessBlock -> do
-          (block, logs) <- process E.processBlock
-          setTip mvAppState block
+          mbRet <- process E.processBlock
           ch <- getChannel mvAppState
-          atomically $ do
-            writeTChan ch block
-            writeTQueue ccResponse (BlockAdded block)
-          pure $ Just logs
+          case mbRet of
+            Nothing -> do
+              atomically $ writeTQueue ccResponse (BlockAdded Nothing)
+              pure Nothing
+            Just (block, logs) -> do
+              setTip mvAppState block
+              atomically $ do
+                writeTChan ch block
+                writeTQueue ccResponse (BlockAdded $ Just block)
+              pure $ Just logs
   case mLogs of
     Nothing -> pure ()
     Just logs -> liftIO $ putStrLn logs
@@ -375,14 +387,12 @@ findIntersect ::
 findIntersect clientPoints = do
   mvState <- ask
   appState <- liftIO $ readMVar mvState
-  let jumboBlock =
+  localChannel <- cloneChainFrom 0
+  let blocks =
         appState
           ^. socketEmulatorState
             . emulatorState
-            . E.emulatedLedgerState
-            . E.currentBlock
-      -- blocks = Chain._chainNewestFirst chainState
-      blocks = [jumboBlock]
+            . E.chainNewestFirst
       slot =
         getSlot $
           appState
@@ -667,7 +677,7 @@ submitTx state tx = case C.fromConsensusGenTx tx of
   C.TxInMode C.ShelleyBasedEraConway shelleyTx -> do
     putStrLn $ "New tx: " ++ show tx
     AppState
-      (SocketEmulatorState clbState@(ClbState chainState _ _ _ _ _) _ _)
+      (SocketEmulatorState clbState@(ClbState chainState _ _ _ _ _ _) _ _)
       _
       _ <-
       readMVar state

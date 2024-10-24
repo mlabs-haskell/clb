@@ -13,7 +13,7 @@ import Cardano.Ledger.Shelley.LedgerState qualified as L
 import Cardano.Slotting.Slot (SlotNo (SlotNo))
 import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra)
 import Clb.Params (PParams, TransitionConfig)
-import Clb.Tx (Block, CardanoTx (..))
+import Clb.Tx (CardanoTx (..))
 import Control.Lens (makeLenses, over, (^.))
 import Data.Default (Default, def)
 import Data.ListMap qualified as ListMap
@@ -38,7 +38,7 @@ pattern CardanoEmulatorEraTx tx <- (getEmulatorEraTx -> tx)
 data EmulatedLedgerState era = EmulatedLedgerState
   { _ledgerEnv :: !(L.MempoolEnv (CardanoLedgerEra era))
   , _memPoolState :: !(L.MempoolState (CardanoLedgerEra era))
-  , _currentBlock :: !(Block era)
+  -- , _currentBlock :: !(Block era)
   }
 
 deriving instance (IsCardanoLedgerEra era) => Show (EmulatedLedgerState era)
@@ -61,7 +61,7 @@ updateSlot f = over ledgerEnv (\l -> l {L.ledgerSlotNo = f (L.ledgerSlotNo l)})
 
 -- | Get the slot number
 getSlot :: (Num a) => EmulatedLedgerState era -> a
-getSlot (EmulatedLedgerState L.LedgerEnv {ledgerSlotNo = SlotNo s} _ _) = fromIntegral s
+getSlot (EmulatedLedgerState L.LedgerEnv {ledgerSlotNo = SlotNo s} _) = fromIntegral s
 
 -- | Set the utxo
 setUtxo ::
@@ -112,7 +112,7 @@ initialState params tc =
                 { lsUTxOState = L.smartUTxOState params mempty (L.Coin 0) (L.Coin 0) def (L.Coin 0)
                 , lsCertState = def {L.certPState = pState'}
                 }
-          , _currentBlock = []
+                -- , _currentBlock = []
           }
       pState' :: L.PState (CardanoLedgerEra era) =
         L.PState

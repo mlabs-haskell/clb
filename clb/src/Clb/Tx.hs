@@ -2,6 +2,7 @@ module Clb.Tx (
   CardanoTx (..),
   OnChainTx (..),
   Block,
+  Blockchain,
 ) where
 
 import Cardano.Api.Shelley qualified as C
@@ -41,3 +42,6 @@ instance (CBOR.ToCBOR (Core.Tx (CardanoLedgerEra era))) => Serialise (OnChainTx 
 following on from the chain so far.
 -}
 type Block era = [OnChainTx era]
+
+-- | A blockchain, which is just a list of blocks, starting with the newest.
+type Blockchain era = [Block era]
