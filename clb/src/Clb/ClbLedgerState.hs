@@ -34,11 +34,13 @@ pattern CardanoEmulatorEraTx tx <- (getEmulatorEraTx -> tx)
 
 {-# COMPLETE CardanoEmulatorEraTx #-}
 
--- | State of the ledger with configuration, mempool, and the blockchain.
+{- | State of the ledger - might be used to store ledger state of the whole
+blockchain or to maintain a so-called "cached state" that reflect the state
+of things for the mempool.
+-}
 data EmulatedLedgerState era = EmulatedLedgerState
   { _ledgerEnv :: !(L.MempoolEnv (CardanoLedgerEra era))
-  , _memPoolState :: !(L.MempoolState (CardanoLedgerEra era))
-  -- , _currentBlock :: !(Block era)
+  , _ledgerState :: !(L.MempoolState (CardanoLedgerEra era))
   }
 
 deriving instance (IsCardanoLedgerEra era) => Show (EmulatedLedgerState era)
@@ -72,18 +74,9 @@ setUtxo ::
   L.UTxO (CardanoLedgerEra era) ->
   EmulatedLedgerState era ->
   EmulatedLedgerState era
-setUtxo params utxo els@EmulatedLedgerState {_memPoolState} = els {_memPoolState = newPoolState}
+setUtxo params utxo els@EmulatedLedgerState {_ledgerState} = els {_ledgerState = newPoolState}
   where
-    newPoolState = _memPoolState {L.lsUTxOState = L.smartUTxOState params utxo (L.Coin 0) (L.Coin 0) def (L.Coin 0)}
-
--- {- | Make a block with all transactions that have been validated in the
--- current block, add the block to the blockchain, and empty the current block.
--- -}
--- makeBlock :: EmulatedLedgerState era -> EmulatedLedgerState era
--- makeBlock state =
---   state
---     & currentBlock .~ []
---     & over previousBlocks ((reverse $ state ^. currentBlock) :)
+    newPoolState = _ledgerState {L.lsUTxOState = L.smartUTxOState params utxo (L.Coin 0) (L.Coin 0) def (L.Coin 0)}
 
 -- | Initial ledger state for a distribution
 initialState ::
@@ -107,7 +100,7 @@ initialState params tc =
                 , L.ledgerPp = params
                 , L.ledgerAccount = L.AccountState (L.Coin 0) (L.Coin 0)
                 }
-          , _memPoolState =
+          , _ledgerState =
               L.LedgerState
                 { lsUTxOState = L.smartUTxOState params mempty (L.Coin 0) (L.Coin 0) def (L.Coin 0)
                 , lsCertState = def {L.certPState = pState'}

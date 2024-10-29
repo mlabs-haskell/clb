@@ -21,7 +21,7 @@ data CardanoTx era where
 instance Show (CardanoTx era) where
   show = const "CardanoTx"
 
-{- | A validated Tx, that made it to the chain.
+{- | A validated Tx, that made it to the ledger state (might be mempool/blockchain).
 Might has IsValid = False in which case the collateral will be collected.
 -}
 newtype OnChainTx era = OnChainTx

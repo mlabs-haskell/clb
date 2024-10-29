@@ -22,7 +22,7 @@ import Cardano.Slotting.EpochInfo (epochInfoEpoch)
 import Cardano.Slotting.Slot (WithOrigin (..))
 import Cardano.Slotting.Time (RelativeTime (RelativeTime), SlotLength, mkSlotLength)
 import Clb (ClbT, emulatedLedgerState, getClbConfig, getCurrentSlot, getGlobals, getStakePools, getUtxosAt, logInfo, txOutRefAt)
-import Clb.ClbLedgerState (memPoolState)
+import Clb.ClbLedgerState (ledgerState)
 import Clb.Config (ClbConfig (..))
 import Clb.TimeSlot (
   SlotConfig (scSlotZeroTime),
@@ -193,5 +193,5 @@ singletonUTxO txIn txOut = C.UTxO $ Map.singleton txIn txOut
 -- | Query the unspent transaction outputs at the given transaction inputs.
 utxosAtTxIns :: (Monad m, Foldable f) => f C.TxIn -> ClbT C.ConwayEra m (C.UTxO C.ConwayEra)
 utxosAtTxIns txIns = do
-  idx <- use (emulatedLedgerState . memPoolState . L.lsUTxOStateL . L.utxosUtxoL)
+  idx <- use (emulatedLedgerState . ledgerState . L.lsUTxOStateL . L.utxosUtxoL)
   pure $ foldMap (\txIn -> maybe mempty (singletonUTxO txIn) $ lookupUTxO txIn idx) txIns
