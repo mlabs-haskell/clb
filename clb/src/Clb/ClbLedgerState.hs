@@ -47,19 +47,23 @@ deriving instance (IsCardanoLedgerEra era) => Show (EmulatedLedgerState era)
 
 makeLenses ''EmulatedLedgerState
 
--- | Increase the slot number by one
-nextSlot :: EmulatedLedgerState era -> EmulatedLedgerState era
-nextSlot = over ledgerEnv f
-  where
-    f l@L.LedgerEnv {ledgerSlotNo = oldSlot} = l {L.ledgerSlotNo = succ oldSlot}
-
 -- | Set the slot number
 setSlot :: SlotNo -> EmulatedLedgerState era -> EmulatedLedgerState era
 setSlot sl = over ledgerEnv (\l -> l {L.ledgerSlotNo = sl})
 
 -- | Update the slot number
 updateSlot :: (SlotNo -> SlotNo) -> EmulatedLedgerState era -> EmulatedLedgerState era
-updateSlot f = over ledgerEnv (\l -> l {L.ledgerSlotNo = f (L.ledgerSlotNo l)})
+updateSlot f s =
+  let slot = f $ getSlot' s
+   in setSlot slot s
+
+-- | Increase the slot number by one
+nextSlot :: EmulatedLedgerState era -> EmulatedLedgerState era
+nextSlot = updateSlot succ
+
+-- | Get the slot number
+getSlot' :: EmulatedLedgerState era -> SlotNo
+getSlot' (EmulatedLedgerState L.LedgerEnv {ledgerSlotNo} _) = ledgerSlotNo
 
 -- | Get the slot number
 getSlot :: (Num a) => EmulatedLedgerState era -> a

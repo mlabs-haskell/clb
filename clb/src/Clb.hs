@@ -139,6 +139,7 @@ import Clb.ClbLedgerState (
   initialState,
   ledgerEnv,
   ledgerState,
+  nextSlot,
   setSlot,
   setUtxo,
  )
@@ -497,9 +498,11 @@ getGlobals = do
       majorVer
 
 {- | The main tx submission mechanism (for "as a library mode").
-Takes a transaction, validates it against the latest blockchain state,
-and adds it to a newly created block.
-Updates datums cache along the way.
+Takes a transaction, validates it against the latest blockchain state.
+Applies it if it is valid, indicating an error otherwise.
+Also:
+  * Updates datums cache with datums used as witnesses
+  * Moves to the next slot
 -}
 submitTx ::
   forall era m.
@@ -513,7 +516,7 @@ submitTx apiTx@(C.ShelleyTx _ tx) = do
     Right (newState, vtx) -> do
       let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
       modify $
-        over emulatedLedgerState (const newState)
+        over emulatedLedgerState (const $ nextSlot newState)
           . over mockDatums (`M.union` txDatums)
       return $ Success newState vtx
     Left err -> return $ Fail tx err
