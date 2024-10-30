@@ -494,7 +494,10 @@ getGlobals = do
   epochInfo <- getEpochInfo
   pure $
     L.mkShelleyGlobals
-      (emulatorShelleyGenesisDefaults {L.sgSystemStart = TimeSlot.posixTimeToUTCTime startTime})
+      ( emulatorShelleyGenesisDefaults
+          { L.sgSystemStart = TimeSlot.posixTimeToUTCTime startTime
+          }
+      )
       epochInfo
       majorVer
 
