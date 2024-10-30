@@ -43,7 +43,7 @@ emulatorShelleyGenesisDefaults :: C.ShelleyGenesis C.StandardCrypto
 emulatorShelleyGenesisDefaults =
   C.shelleyGenesisDefaults
     { C.sgNetworkMagic = case testNetworkMagic of C.NetworkMagic nm -> nm
-    , C.sgSystemStart = posixTimeToUTCTime $ POSIXTime beginningOfTime
+    , C.sgSystemStart = posixTimeToUTCTime $ POSIXTime beginningOfTime -- usually wrong in emulator's setting
     , C.sgProtocolParams =
         C.sgProtocolParams C.shelleyGenesisDefaults
           & L.ppProtocolVersionL

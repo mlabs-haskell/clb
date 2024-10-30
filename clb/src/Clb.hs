@@ -489,11 +489,12 @@ getEpochInfo =
 getGlobals :: forall era m. (Monad m, IsCardanoLedgerEra era) => ClbT era m Globals
 getGlobals = do
   pparams <- gets (clbConfigProtocol . _clbConfig)
+  startTime <- gets (scSlotZeroTime . clbConfigSlotConfig . _clbConfig)
   let majorVer = L.pvMajor $ view L.ppProtocolVersionL pparams
   epochInfo <- getEpochInfo
   pure $
     L.mkShelleyGlobals
-      emulatorShelleyGenesisDefaults
+      (emulatorShelleyGenesisDefaults {L.sgSystemStart = TimeSlot.posixTimeToUTCTime startTime})
       epochInfo
       majorVer
 
