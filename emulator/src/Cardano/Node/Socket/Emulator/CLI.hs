@@ -7,11 +7,7 @@ module Cardano.Node.Socket.Emulator.CLI (buildConfig) where
 
 import Cardano.Node.Socket.Emulator.Configuration (EmulatorConfiguration (..))
 import Cardano.Node.Socket.Emulator.Types (NodeServerConfig (..), defaultNodeServerConfig)
-import Control.Monad (join)
 import Data.Aeson (FromJSON, ToJSON)
-import Data.Map (Map)
-import Data.Maybe (Maybe)
-import Data.Semigroup ((<>))
 import Data.Yaml (decodeFileThrow)
 import GHC.Generics (Generic)
 import Options.Applicative (
@@ -35,11 +31,6 @@ import Options.Applicative (
   strOption,
   (<**>),
  )
-import System.Directory (getCurrentDirectory)
-import System.Environment (getArgs, getProgName)
-import System.Exit (die)
-import System.FilePath ((</>))
-import System.IO (hPutStrLn, stderr)
 
 -- Main function to parse the command line arguments
 buildConfig :: IO NodeServerConfig

@@ -2,26 +2,30 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeOperators #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Cardano.Node.Socket.Emulator.Query (HandleQuery (..)) where
 
 import Cardano.Api qualified as Api
 import Cardano.Api.Eras qualified as C
 import Cardano.Api.Shelley qualified as C
-import Cardano.Ledger.Api qualified as L
+import Cardano.BM.Data.Trace (Trace)
 import Cardano.Ledger.Api.Transition qualified as L
 import Cardano.Ledger.BaseTypes (epochInfo)
 import Cardano.Ledger.Shelley.LedgerState qualified as L
 import Cardano.Ledger.UTxO qualified as L
 import Cardano.Node.Socket.Emulator.Types (
   AppState (..),
+  EmulatorMsg,
+  clbState,
   getTip,
-  runChainEffects,
+  runClbInIO',
+  socketEmulatorState,
  )
 import Cardano.Slotting.EpochInfo (epochInfoEpoch)
 import Cardano.Slotting.Slot (WithOrigin (..))
 import Cardano.Slotting.Time (RelativeTime (RelativeTime), SlotLength, mkSlotLength)
-import Clb (ClbT, emulatedLedgerState, getClbConfig, getCurrentSlot, getGlobals, getStakePools, getUtxosAt, logInfo, txOutRefAt)
+import Clb (ClbT, chainState, clbConfig, getClbConfig, getCurrentSlot, getGlobals, getStakePools, getUtxosAt)
 import Clb.ClbLedgerState (ledgerState)
 import Clb.Config (ClbConfig (..))
 import Clb.TimeSlot (
@@ -32,11 +36,10 @@ import Clb.TimeSlot (
   scSlotLength,
  )
 import Control.Concurrent (MVar, readMVar)
-import Control.Lens (alaf, use, view)
+import Control.Lens (use, view, (^.))
 import Control.Monad (foldM)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Map qualified as Map
-import Data.Monoid (Ap (Ap))
 import Data.SOP (K (K))
 import Data.SOP.Counting qualified as Ouroboros
 import Data.SOP.NonEmpty qualified as Ouroboros
@@ -59,11 +62,12 @@ import Ouroboros.Consensus.Shelley.Eras (ConwayEra, StandardCrypto)
 import Ouroboros.Consensus.Shelley.Ledger qualified as Shelley
 import Ouroboros.Consensus.Shelley.Ledger.Query (BlockQuery (..))
 import Ouroboros.Network.Block qualified as O
-import PlutusLedgerApi.V1 (POSIXTime (POSIXTime, getPOSIXTime))
+import PlutusLedgerApi.V1 (POSIXTime (POSIXTime))
 
 class HandleQuery era where
   handleQuery ::
     (block ~ CardanoBlock StandardCrypto) =>
+    Trace IO EmulatorMsg ->
     MVar (AppState era) ->
     Query block result ->
     IO result
@@ -73,37 +77,37 @@ instance HandleQuery C.ConwayEra where
 
 handleQueryConwayEra ::
   (block ~ CardanoBlock StandardCrypto) =>
+  Trace IO EmulatorMsg ->
   MVar (AppState C.ConwayEra) ->
   Query block result ->
   IO result
-handleQueryConwayEra state = \case
+handleQueryConwayEra trace state = \case
   query@(BlockQuery (QueryIfCurrentConway q)) -> do
-    putStrLn $ "1 - Query was received: " ++ show query
-    (_logs, res) <- runChainEffects state $ queryIfCurrentConway q
+    putStrLn $ "Query was received (1): " ++ show query
+    res <- runClbInIO' trace state $ queryIfCurrentConway q
     either (printError . show) (pure . Right) res
   query@(BlockQuery (QueryHardFork GetInterpreter)) -> do
-    putStrLn $ "2 - Query was received: " ++ show query
-    AppState _ _ config <- readMVar state
+    putStrLn $ "Query was received (2): " ++ show query
+    as <- readMVar state
+    let config = as ^. (socketEmulatorState . clbState . clbConfig)
     let C.EraHistory interpreter = emulatorEraHistory config
     pure interpreter
   query@(BlockQuery (QueryHardFork GetCurrentEra)) -> do
-    putStrLn $ "3- Query was received: " ++ show query
+    putStrLn $ "Query was received (3): " ++ show query
     pure $ Consensus.EraIndex (S (S (S (S (S (S (Z (K ())))))))) -- ConwayEra
-  BlockQuery q -> printError $ "Unimplemented BlockQuery received: " ++ show q
+  BlockQuery q -> printError $ "Unimplemented BlockQuery was received: " ++ show q
   query@GetSystemStart -> do
-    putStrLn $ "4 - Query was received: " ++ show query
-    AppState _ _ ClbConfig {clbConfigSlotConfig} <- readMVar state
-    pure $ C.SystemStart $ posixTimeToUTCTime $ scSlotZeroTime clbConfigSlotConfig
+    putStrLn $ "Query was received (4): " ++ show query
+    as <- readMVar state
+    let slotConfig = clbConfigSlotConfig $ as ^. (socketEmulatorState . clbState . clbConfig)
+    pure $ C.SystemStart $ posixTimeToUTCTime $ scSlotZeroTime slotConfig
   query@GetChainBlockNo -> do
-    putStrLn $ "5 - Query was received: " ++ show query
+    putStrLn $ "Query was received (5): " ++ show query
     tip <- getTip state
     case tip of
       O.TipGenesis -> pure Origin
       (O.Tip _ _ curBlockNo) -> pure $ At curBlockNo
-  query@GetChainPoint -> printError "Unimplemented: GetChainPoint"
-
--- q -> do
---   printError $ "Query was received: " ++ show q
+  GetChainPoint -> printError "Unimplemented GetChainPoint was received"
 
 queryIfCurrentConway ::
   (block ~ Shelley.ShelleyBlock (Praos StandardCrypto) (ConwayEra StandardCrypto)) =>
@@ -123,6 +127,7 @@ queryIfCurrentConway = \case
   GetUTxOByTxIn txIns -> C.toLedgerUTxO C.ShelleyBasedEraConway <$> utxosAtTxIns (Set.map C.fromShelleyTxIn txIns)
   q -> printError $ "Unimplemented BlockQuery(QueryIfCurrentConway) received: " ++ show q
 
+-- TODO: shall we get rig of it?
 printError :: (MonadIO m) => String -> m a
 printError s = liftIO (print s) >> error s
 
@@ -134,11 +139,11 @@ emulatorEraHistory params = C.EraHistory (Ouroboros.mkInterpreter $ Ouroboros.su
       Ouroboros.nonEmptyHead $
         Ouroboros.getSummary $
           skipSummary Ouroboros.initBound emulatorEpochSize (slotLength params) emulatorGenesisWindow
-    last =
+    lastS =
       Ouroboros.nonEmptyHead $
         Ouroboros.getSummary $
           skipSummary lastEndBound emulatorEpochSize (slotLength params) emulatorGenesisWindow
-    list = Ouroboros.Exactly $ K one :* K one :* K one :* K one :* K one :* K one :* K last :* Nil
+    list = Ouroboros.Exactly $ K one :* K one :* K one :* K one :* K one :* K one :* K lastS :* Nil
 
 -- | 'Summary' for a ledger that never forks
 skipSummary :: Bound -> EpochSize -> SlotLength -> GenesisWindow -> Summary '[x]
@@ -193,5 +198,5 @@ singletonUTxO txIn txOut = C.UTxO $ Map.singleton txIn txOut
 -- | Query the unspent transaction outputs at the given transaction inputs.
 utxosAtTxIns :: (Monad m, Foldable f) => f C.TxIn -> ClbT C.ConwayEra m (C.UTxO C.ConwayEra)
 utxosAtTxIns txIns = do
-  idx <- use (emulatedLedgerState . ledgerState . L.lsUTxOStateL . L.utxosUtxoL)
+  idx <- use (chainState . ledgerState . L.lsUTxOStateL . L.utxosUtxoL)
   pure $ foldMap (\txIn -> maybe mempty (singletonUTxO txIn) $ lookupUTxO txIn idx) txIns

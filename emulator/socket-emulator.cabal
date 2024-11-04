@@ -2,6 +2,10 @@ cabal-version: 3.8
 name:          socket-emulator
 version:       1.0.0
 
+flag force-recomp
+  description: Compile with -fforce-recomp and -Wunused-packages
+  default:     False
+
 common lang
   default-language:   GHC2021
   default-extensions:
@@ -9,8 +13,9 @@ common lang
     LambdaCase
 
   ghc-options:
-    -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns
-    -Wnoncanonical-monad-instances -Wredundant-constraints -fplugin-opt
+    -Wall -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wnoncanonical-monad-instances
+    -Wredundant-constraints -fplugin-opt
     PlutusTx.Plugin:target-version=1.1.0 -fplugin-opt
     PlutusTx.Plugin:defer-errors
 
@@ -19,6 +24,9 @@ common lang
   if (impl(ghc <9.6) || impl(ghc >=9.7))
     buildable: False
 
+  if flag(force-recomp)
+    ghc-options: -fforce-recomp -Wunused-packages
+
 library
   import:          lang
   hs-source-dirs:  src
@@ -26,10 +34,10 @@ library
     Cardano.Node.Socket.Emulator
     Cardano.Node.Socket.Emulator.CLI
     Cardano.Node.Socket.Emulator.Configuration
-    Cardano.Node.Socket.Emulator.Mock
     Cardano.Node.Socket.Emulator.Params
     Cardano.Node.Socket.Emulator.Query
     Cardano.Node.Socket.Emulator.Server
+    Cardano.Node.Socket.Emulator.SlotCoordinator
     Cardano.Node.Socket.Emulator.Types
     Plutus.Monitoring.Util
 

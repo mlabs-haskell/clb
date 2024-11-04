@@ -18,23 +18,21 @@
 -- | This module exports data types for logging, events and configuration
 module Cardano.Node.Socket.Emulator.Types where
 
+import Cardano.BM.Data.Trace (Trace)
+
 import Cardano.Api (ConwayEra, lovelaceToValue)
 import Cardano.Chain.Slotting (EpochSlots (..))
 import Cardano.Ledger.Block qualified as CL
 import Cardano.Ledger.Era qualified as CL
-import Cardano.Ledger.Shelley.API (Coin (Coin), LedgerEnv (ledgerSlotNo), Nonce (NeutralNonce), extractTx, unsafeMakeValidated)
+import Cardano.Ledger.Shelley.API (Coin (Coin), Nonce (NeutralNonce), extractTx, unsafeMakeValidated)
 import Cardano.Ledger.Shelley.Genesis qualified as SG
 import Codec.Serialise (DeserialiseFailure)
 import Codec.Serialise qualified as CBOR
-import Control.Concurrent (MVar, modifyMVar_, putMVar, readMVar, takeMVar)
+import Control.Concurrent (MVar, modifyMVar, modifyMVar_, readMVar)
 import Control.Concurrent.STM
-import Control.Lens (makeLenses, to, view, (&), (.~), (^.))
-import Control.Monad (forever)
+import Control.Lens (makeLenses, over, view, (&), (.~), (^.))
 import Control.Monad.Class.MonadST (MonadST)
-import Control.Monad.Class.MonadTimer (MonadDelay (threadDelay), MonadTimer)
-import Control.Monad.Except (runExceptT)
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.RWS.Strict (runRWST)
 import Crypto.Hash (SHA256, hash)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.ByteArray qualified as BA
@@ -42,16 +40,14 @@ import Data.ByteString.Lazy qualified as BSL
 import Data.ByteString.Short qualified as BS
 import Data.Coerce (coerce)
 import Data.Default (Default, def)
-import Data.Foldable (toList)
+import Data.Foldable (toList, traverse_)
 import Data.Functor ((<&>))
 import Data.ListMap qualified as LM
 import Data.Map qualified as Map
-import Data.Maybe (listToMaybe)
 import Data.Text qualified as Text
 import Data.Time.Clock (UTCTime)
 import Data.Time.Format.ISO8601 qualified as F
 import Data.Time.Units (Millisecond)
-import Data.Void (Void)
 import GHC.Generics (Generic)
 import Network.TypedProtocol.Codec (Codec)
 import Ouroboros.Consensus.Byron.Ledger qualified as Byron
@@ -76,9 +72,7 @@ import Ouroboros.Consensus.Shelley.Eras (StandardCrypto)
 import Ouroboros.Consensus.Shelley.Ledger qualified as Shelley
 import Ouroboros.Network.Block (Point)
 import Ouroboros.Network.Block qualified as Ouroboros
-import Ouroboros.Network.Mux
 import Ouroboros.Network.NodeToClient (
-  LocalAddress,
   NodeToClientVersion (..),
   NodeToClientVersionData (..),
  )
@@ -99,13 +93,15 @@ import Clb (
   ClbConfig (ClbConfig),
   ClbState,
   ClbT (unwrapClbT),
+  EmulatedLedgerState,
   OnChainTx (..),
+  chainState,
+  checkErrors,
   clbConfigConfig,
-  emulatedLedgerState,
   initClb,
   unwrapClbT,
  )
-import Clb.ClbLedgerState (getSlot, ledgerEnv)
+import Clb.ClbLedgerState (TxPool, getSlot)
 import Test.Cardano.Ledger.Common
 import Test.Cardano.Ledger.Shelley.Constants (defaultConstants)
 import Test.Cardano.Ledger.Shelley.Generator.Presets (coreNodeKeys)
@@ -113,43 +109,51 @@ import Test.Cardano.Ledger.Shelley.Serialisation.EraIndepGenerators ()
 import Test.Cardano.Protocol.TPraos.Create (mkBlock, mkOCert)
 
 import Cardano.Api qualified as C
-import Cardano.Api.NetworkId (mainnetNetworkMagic)
 import Cardano.Ledger.Api.Transition (EraTransition)
 import Cardano.Ledger.Core qualified as Core
 import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra)
 import Control.Exception (Exception)
-import Control.Monad.State.Lazy (StateT (runStateT), runState)
+import Control.Monad.State.Lazy (StateT (runStateT))
 import Data.Base16.Types qualified as B16
 import Data.ByteString.Base16 qualified as B16
 
 import Cardano.Ledger.Shelley.Transition qualified as T
+import Clb qualified as E
+import Clb.TimeSlot (Slot)
+import Clb.Tx (Blockchain, CardanoTx)
+import Control.Exception.Base (throwIO)
+import Control.Monad.Freer (send)
+import Control.Monad.Freer.Extras (LogLevel (..), LogMessage (LogMessage), LogMsg (LMessage))
+import Control.Monad.State (gets, modify)
+import Plutus.Monitoring.Util (runLogEffects)
 
-type Tip = Ouroboros.Tip (CardanoBlock StandardCrypto)
-
-type TxPool era = [OnChainTx era]
-
+{- | In addition to state handled by CLB emulator as a library ('ClbState')
+this data type introduces additional things that are involved when the
+emulator is used in "as a cardano-node mode".
+-}
 data SocketEmulatorState era = SocketEmulatorState
-  { _emulatorState :: ClbState era
+  { _clbState :: ClbState era
+  -- ^ the main state from CLB
+  , _chainNewestFirst :: !(Blockchain era)
+  -- ^ the blockchain
+  , _txPool :: !(TxPool era)
+  -- ^ transaction mempool
+  , _cachedState :: !(EmulatedLedgerState era)
+  -- ^ state that reflects all the changes known to the mempool
+  -- while in the 'clbState' the state represents the state known
+  -- to the blockchain itself
   , _channel :: TChan (Block era)
   , _tip :: Tip
   }
   deriving (Generic)
 
-makeLenses ''SocketEmulatorState
+type Tip = Ouroboros.Tip (CardanoBlock StandardCrypto)
 
--- instance Show SocketEmulatorState where
---   -- Skip showing the full chain
---   show SocketEmulatorState {_emulatorState, _tip} =
---     "SocketEmulatorState { "
---       <> show _emulatorState
---       <> ", "
---       <> show _tip
---       <> " }"
+makeLenses ''SocketEmulatorState
 
 -- | Node server configuration
 data NodeServerConfig = NodeServerConfig
-  { nscInitialTxWallets :: [Integer] -- FIXME: Was: WalletNumber
-
+  { nscInitialTxWallets :: [Integer]
   -- ^ The wallets that receive money from the initial transaction.
   , nscSocketPath :: FilePath
   -- ^ Path to the socket used to communicate with the server.
@@ -188,17 +192,9 @@ defaultNodeServerConfig =
 instance Default NodeServerConfig where
   def = defaultNodeServerConfig
 
--- TODO:
--- type EmulatorLogs = Seq (L.LogMessage EmulatorMsg)
-type EmulatorLogs = ()
-
 -- | Application State
-data AppState era = AppState
+newtype AppState era = AppState
   { _socketEmulatorState :: SocketEmulatorState era
-  -- ^ blockchain state
-  , _emulatorLogs :: EmulatorLogs
-  -- ^ history of all log messages
-  , _emulatorParams :: ClbConfig era
   }
 
 -- deriving (Show)
@@ -207,9 +203,6 @@ makeLenses 'AppState
 
 type CardanoAddress = AddressInEra ConwayEra
 
-{- | 'ChainState' with initial values
-initialChainState :: (MonadIO m) => MockConfig -> Map.Map CardanoAddress Value -> m SocketEmulatorState
--}
 initialChainState ::
   forall m era.
   ( MonadIO m
@@ -226,23 +219,23 @@ initialChainState params@ClbConfig {clbConfigConfig} =
     perWallet = lovelaceToValue $ Coin 1_000_000_000
     initialFunds = LM.toList $ clbConfigConfig ^. (T.tcShelleyGenesisL . SG.sgInitialFundsL)
 
-    -- fromEmulatorChainState :: (MonadIO m, CBOR.ToCBOR (Core.Tx (CardanoLedgerEra era))) => ClbState era -> m (SocketEmulatorState era)
     fromEmulatorChainState :: ClbState era -> m (SocketEmulatorState era)
     fromEmulatorChainState state = do
       ch <- liftIO $ atomically newTChan
-      -- let chainNewestFirst = [view (emulatedLedgerState . currentBlock) state] -- we don't have blocks yet
-      let currentSlot = view (emulatedLedgerState . ledgerEnv . to ledgerSlotNo) state
+      -- let chainNewestFirst = [view (chainState . currentBlock) state] -- we don't have blocks yet
+      -- let currentSlot = view (chainState . ledgerEnv . to ledgerSlotNo) state
       -- void $
       --   liftIO $
       --     mapM_ (atomically . writeTChan ch) chainNewestFirst
       pure $
         SocketEmulatorState
-          { _channel = ch
-          , _emulatorState = state
-          , _tip = Ouroboros.TipGenesis
-          -- case listToMaybe chainNewestFirst of
-          -- Nothing -> Ouroboros.TipGenesis
-          -- Just block -> Ouroboros.Tip currentSlot (coerce $ blockId block) (coerce currentSlot)
+          { _clbState = state
+          , _chainNewestFirst = mempty
+          , _txPool = mempty
+          , _cachedState = state ^. chainState
+          , _channel = ch
+          , -- Is this correct? There is no way to produce a tip if there are no blocks.
+            _tip = Ouroboros.TipGenesis
           }
 
 getChannel :: (MonadIO m) => MVar (AppState era) -> m (TChan (Block era))
@@ -259,31 +252,112 @@ setTip mv block = liftIO $ modifyMVar_ mv $ \oldState -> do
         getSlot $
           oldState
             ^. socketEmulatorState
-              . emulatorState
-              . emulatedLedgerState
+              . clbState
+              . chainState
   pure $
     oldState
       & socketEmulatorState . tip
         .~ Ouroboros.Tip (fromInteger slot) (coerce $ blockId block) (fromInteger slot)
 
-type EmulatorError = ()
-instance Exception EmulatorError
+-- Set the new tip
+setTip' :: (CBOR.ToCBOR (Core.Tx (CardanoLedgerEra era))) => AppState era -> Block era -> AppState era
+setTip' oldState block =
+  let slot =
+        getSlot $
+          oldState
+            ^. socketEmulatorState
+              . clbState
+              . chainState
+   in oldState
+        & socketEmulatorState . tip
+          .~ Ouroboros.Tip (fromInteger slot) (coerce $ blockId block) (fromInteger slot)
 
--- | Run all chain effects in the IO Monad
-runChainEffects ::
+-- -----------------------------------------------------------------------------
+-- CLB utils
+-- -----------------------------------------------------------------------------
+
+-- | Run CLB in the IO Monad returning logs and the result or an error.
+runClbInIO ::
   MVar (AppState era) ->
   ClbT era IO a ->
   IO (EmulatorLogs, Either EmulatorError a)
-runChainEffects stateVar eff = do
-  AppState (SocketEmulatorState oldState chan tip') events params <- liftIO $ takeMVar stateVar
-  (a, newState) <- runStateT (unwrapClbT eff) oldState
-  putMVar stateVar $
-    -- FIXME: add new events
-    -- FIXME: handle errors
-    AppState (SocketEmulatorState newState chan tip') events params
-  pure ((), Right a)
+runClbInIO stateVar eff =
+  modifyMVar stateVar $ \appState -> do
+    let s = appState ^. (socketEmulatorState . clbState)
+    let action = do
+          ret <- eff
+          logs <- extractLogs
+          mErr <- checkErrors
+          case mErr of
+            Nothing -> pure (logs, Right ret)
+            Just err -> pure (logs, Left err)
+    (a, s') <- runStateT (unwrapClbT action) s
+    pure (appState & (socketEmulatorState . clbState) .~ s', a)
 
--- Logging ------------------------------------------------------------------------------------------------------------
+runClbInIO' ::
+  Trace IO EmulatorMsg ->
+  MVar (AppState C.ConwayEra) ->
+  ClbT C.ConwayEra IO a ->
+  IO (Either EmulatorError a)
+runClbInIO' trace stateVar eff = do
+  (events, result) <- runClbInIO stateVar eff
+  runLogEffects trace $ do
+    traverse_ (send . LMessage . convClbLog) (E.fromLog events)
+  pure result
+
+runClb ::
+  Trace IO EmulatorMsg ->
+  MVar (AppState C.ConwayEra) ->
+  ClbT C.ConwayEra IO a ->
+  IO a
+runClb trace mvAppState action = do
+  runClbInIO' trace mvAppState action >>= either throwIO pure
+
+runClbWithApp ::
+  MVar (AppState C.ConwayEra) ->
+  (AppState C.ConwayEra -> ClbT C.ConwayEra IO (AppState C.ConwayEra, a)) ->
+  IO (AppState C.ConwayEra, a)
+runClbWithApp mvAppState action =
+  modifyMVar mvAppState $ \appState -> do
+    let s = appState ^. (socketEmulatorState . clbState)
+    ((newAppState, a), s') <- runStateT (unwrapClbT (action appState)) s
+    let newAppState' = newAppState & (socketEmulatorState . clbState) .~ s'
+    pure (newAppState', (newAppState', a))
+
+convClbLog :: (Slot, E.LogEntry) -> LogMessage String
+convClbLog (slot, entry) =
+  let lvl = case E.leLevel entry of
+        E.Debug -> Debug
+        E.Info -> Info
+        E.Warning -> Warning
+        E.Error -> Error
+   in LogMessage lvl $ "Slot  " <> show slot <> ": " <> E.leMsg entry
+
+-- Extracts logs from Clb computation, and clears them up.
+extractLogs :: (Monad m) => ClbT era m EmulatorLogs
+extractLogs = do
+  theLog <- gets (^. E.clbLog)
+  modify (over E.clbLog (const mempty))
+  pure theLog
+
+-- -- Extracts logs from Clb computation, and clears them up.
+-- extractLogsAsString :: (Monad m) => ClbT era m String
+-- extractLogsAsString = do
+--   theLog <- gets (^. E.clbLog)
+--   modify (over E.clbLog (const mempty))
+--   let logDoc = E.ppLog theLog
+--   let options = defaultLayoutOptions {layoutPageWidth = AvailablePerLine 150 1.0}
+--   let logString = renderString $ layoutPretty options logDoc
+--   let clbLog = "a\nEmulator log :\n--------------\n" <> logString
+--   pure clbLog
+
+type EmulatorLogs = E.Log E.LogEntry
+type EmulatorError = String
+instance Exception EmulatorError
+
+-- -----------------------------------------------------------------------------
+-- Logging
+-- -----------------------------------------------------------------------------
 
 {- | Top-level logging data type for structural logging
 inside the CNSE server.
@@ -291,8 +365,10 @@ inside the CNSE server.
 data CNSEServerLogMsg
   = StartingSlotCoordination UTCTime Millisecond
   | StartingCNSEServer
-  | ProcessingEmulatorMsg String -- FIXME: EmulatorMsg
+  | ProcessingEmulatorMsg EmulatorMsg
   deriving (Generic, Show)
+
+type EmulatorMsg = String
 
 instance Pretty CNSEServerLogMsg where
   pretty = \case
@@ -303,7 +379,7 @@ instance Pretty CNSEServerLogMsg where
         <+> "Slot length:"
         <+> viaShow slotLength
     StartingCNSEServer -> "Starting Cardano Node Emulator"
-    ProcessingEmulatorMsg e -> "Processing emulator event:" <+> pretty e
+    ProcessingEmulatorMsg e -> pretty e
 
 -- | The node protocols require a block header type.
 newtype BlockId = BlockId {getBlockId :: BS.ShortByteString}
@@ -340,27 +416,6 @@ number matches the one in the test net created by scripts)
 -}
 nodeToClientVersionData :: C.NetworkMagic -> NodeToClientVersionData
 nodeToClientVersionData magic = NodeToClientVersionData {networkMagic = magic, query = False}
-
--- testNetworkMagic :: C.NetworkMagic
--- -- testNetworkMagic = C.NetworkMagic 1_097_911_063
--- testNetworkMagic = mainnetNetworkMagic
-
--- testnet :: C.NetworkId
--- testnet = C.Testnet testNetworkMagic
-
-doNothingResponderProtocol ::
-  (MonadTimer m) =>
-  RunMiniProtocolWithMinimalCtx
-    'ResponderMode
-    LocalAddress
-    BSL.ByteString
-    m
-    Void
-    a
-doNothingResponderProtocol =
-  ResponderProtocolOnly $
-    MiniProtocolCb $
-      \_ _ -> forever $ threadDelay 1_000_000
 
 -- | Boilerplate codecs used for protocol serialisation.
 
@@ -467,3 +522,6 @@ toCardanoBlock (Ouroboros.Tip curSlotNo _ curBlockNo) block = do
 fromCardanoBlock :: CardanoBlock StandardCrypto -> Block ConwayEra
 fromCardanoBlock (OC.BlockConway (Shelley.ShelleyBlock (CL.Block _ txSeq) _)) = map (OnChainTx . unsafeMakeValidated) . toList $ CL.fromTxSeq txSeq
 fromCardanoBlock _ = []
+
+addTxToPool :: CardanoTx era -> SocketEmulatorState era -> SocketEmulatorState era
+addTxToPool tx = over txPool (tx :)

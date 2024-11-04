@@ -38,12 +38,11 @@ module Clb (
 
   -- * CLB internals (revise)
   ClbState (..),
-  emulatedLedgerState,
+  chainState,
   clbConfig,
-  mockDatums,
-  mockInfo,
-  mockFails,
-  chainNewestFirst,
+  knownDatums,
+  clbLog,
+  clbFailures,
   EmulatedLedgerState (..),
 
   -- * CLB Runner
@@ -52,7 +51,6 @@ module Clb (
 
   -- * Actions
   txOutRefAt,
-  -- txOutRefAtState, -- Not sure we need it
   txOutRefAtPaymentCred,
 
   -- * Tx submission (Haskell API)
@@ -93,16 +91,12 @@ module Clb (
   -- * Protocol parameters
   PParams,
 
-  -- * Block producing
-  processBlock,
-
   -- * key utils
   intToKeyPair,
   intToCardanoSk,
   waitSlot,
   modifySlot,
-  addTxToPool,
-  applyTx,
+  -- applyTx,
   getStakePools,
   -- others
   scriptDataFromCardanoTxBody,
@@ -134,8 +128,6 @@ import Cardano.Ledger.TxIn qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo)
 import Clb.ClbLedgerState (
   EmulatedLedgerState (..),
-  TxPool,
-  getEmulatorEraTx,
   initialState,
   ledgerEnv,
   ledgerState,
@@ -149,13 +141,13 @@ import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra, maryBasedEra)
 import Clb.Params (PParams, emulatorShelleyGenesisDefaults)
 import Clb.TimeSlot (Slot (..), SlotConfig (..), slotConfigToEpochInfo)
 import Clb.TimeSlot qualified as TimeSlot
-import Clb.Tx (Block, Blockchain, CardanoTx, OnChainTx (..))
+import Clb.Tx (Block, OnChainTx (..))
 import Control.Arrow (ArrowChoice (..))
 import Control.Lens (makeLenses, over, view, (&), (.~), (^.))
 import Control.Monad (when)
 import Control.Monad.Identity (Identity)
 import Control.Monad.Reader (runReader)
-import Control.Monad.State (MonadState (get), StateT, gets, modify, modify', put, runState)
+import Control.Monad.State (MonadState, StateT, gets, modify, modify', runState)
 import Control.Monad.Trans (MonadIO, MonadTrans)
 import Control.State.Transition (SingEP (..), globalAssertionPolicy)
 import Control.State.Transition.Extended (
@@ -169,7 +161,7 @@ import Data.Foldable (toList)
 import Data.Function (on)
 import Data.List
 import Data.Map qualified as M
-import Data.Maybe (catMaybes)
+
 import Data.Sequence (Seq (..))
 import Data.Sequence qualified as Seq
 import Data.Set (Set)
@@ -185,21 +177,16 @@ import PlutusLedgerApi.V1 qualified as PV1 (
 import PlutusLedgerApi.V2 qualified as PV2
 import Prettyprinter (
   Doc,
-  LayoutOptions (layoutPageWidth),
-  PageWidth (AvailablePerLine),
   Pretty,
   colon,
-  defaultLayoutOptions,
   fillSep,
   hang,
   indent,
-  layoutPretty,
   pretty,
   vcat,
   vsep,
   (<+>),
  )
-import Prettyprinter.Render.String (renderString)
 import Test.Cardano.Ledger.Core.KeyPair qualified as TL
 import Text.Show.Pretty (ppShow)
 
@@ -237,19 +224,20 @@ newtype ClbT era m a = ClbT {unwrapClbT :: StateT (ClbState era) m a}
 -- | State monad wrapper to run emulator.
 type Clb era = ClbT era Identity
 
-{- | Emulator state: ledger state + some additional things
-FIXME: remove non-state parts like MockConfig and Log (?)
--}
+-- | CLB Emulator state: ledger state + some additional things
 data ClbState era = ClbState
-  { _emulatedLedgerState :: !(EmulatedLedgerState era)
+  { _chainState :: !(EmulatedLedgerState era)
+  -- ^ the state of the ledger
+  , _knownDatums :: !(M.Map PV1.DatumHash PV1.Datum)
+  -- ^ datums: inline datums + presented as witnesses
+  -- See also https://github.com/mlabs-haskell/clb/issues/45
+  , _clbLog :: !(Log LogEntry)
+  -- ^ The log of CLB, contains all log items, including failures.
+  , _clbFailures :: !(Log FailReason)
+  -- ^ Failures that occured.
   , _clbConfig :: !(ClbConfig era)
-  , -- FIXME: rename, this is cache for known datums that were used as
-    -- witnesses. See also https://github.com/mlabs-haskell/clb/issues/45
-    _mockDatums :: !(M.Map PV1.DatumHash PV1.Datum)
-  , _mockInfo :: !(Log LogEntry)
-  , _mockFails :: !(Log FailReason)
-  , _txPool :: !(TxPool era)
-  , _chainNewestFirst :: !(Blockchain era)
+  -- ^ The configuration (supposed to be read-only)
+  -- TODO: remove non-state parts like ClbConfig from the state?
   }
 
 -- deriving stock (Show)
@@ -347,13 +335,13 @@ initClb
   walletFunds
   mInitFunds =
     ClbState
-      { _emulatedLedgerState = setUtxo pparams utxos (initialState pparams tc)
-      , _mockDatums = M.empty
+      { _chainState = setUtxo pparams utxos (initialState pparams tc)
+      , _knownDatums = M.empty
       , _clbConfig = cfg
-      , _mockInfo = mempty
-      , _mockFails = mempty
-      , _txPool = mempty
-      , _chainNewestFirst = mempty
+      , _clbLog = mempty
+      , _clbFailures = mempty
+      -- , _txPool = mempty
+      -- , _chainNewestFirst = mempty
       }
     where
       utxos :: L.UTxO (CardanoLedgerEra era)
@@ -397,7 +385,7 @@ getClbConfig :: (Monad m) => ClbT era m (ClbConfig era)
 getClbConfig = gets (^. clbConfig)
 
 getCurrentSlot :: (Monad m) => ClbT era m C.SlotNo
-getCurrentSlot = gets $ L.ledgerSlotNo . (^. emulatedLedgerState . ledgerEnv)
+getCurrentSlot = gets $ L.ledgerSlotNo . (^. chainState . ledgerEnv)
 
 getStakePools ::
   ( Monad m
@@ -410,7 +398,7 @@ getStakePools =
       . L.psStakePoolParams
       . L.certPState
       . L.lsCertState
-      . (^. emulatedLedgerState . ledgerState)
+      . (^. chainState . ledgerState)
 
 -- | Log a generic (non-typed) error.
 logError :: (Monad m) => String -> ClbT era m ()
@@ -423,14 +411,14 @@ logInfo :: (Monad m) => LogEntry -> ClbT era m ()
 logInfo le = do
   C.SlotNo slotNo <- getCurrentSlot
   let slot = Slot $ toInteger slotNo
-  modify' $ over mockInfo $ appendLog slot le
+  modify' $ over clbLog $ appendLog slot le
 
 -- | Log failure.
 logFail :: (Monad m) => FailReason -> ClbT era m ()
 logFail res = do
   C.SlotNo slotNo <- getCurrentSlot
   let slot = Slot $ toInteger slotNo
-  modify' $ over mockFails $ appendLog slot res
+  modify' $ over clbFailures $ appendLog slot res
 
 -- | Insert event to log
 appendLog :: Slot -> a -> Log a -> Log a
@@ -449,7 +437,7 @@ getUtxosAt addr = do
 -- Returns the complete utx state in the emulated ledger state
 currentUtxoState :: ClbState era -> L.UTxO (CardanoLedgerEra era)
 currentUtxoState =
-  (^. emulatedLedgerState . ledgerState . L.lsUTxOStateL . L.utxosUtxoL)
+  (^. chainState . ledgerState . L.lsUTxOStateL . L.utxosUtxoL)
 
 -- | Read all TxOutRefs that belong to given address.
 txOutRefAt ::
@@ -486,7 +474,7 @@ getEpochInfo :: (Monad m) => ClbT era m (EpochInfo (Either Text))
 getEpochInfo =
   gets (slotConfigToEpochInfo . clbConfigSlotConfig . _clbConfig)
 
-getGlobals :: forall era m. (Monad m, IsCardanoLedgerEra era) => ClbT era m Globals
+getGlobals :: (Monad m, IsCardanoLedgerEra era) => ClbT era m Globals
 getGlobals = do
   pparams <- gets (clbConfigProtocol . _clbConfig)
   startTime <- gets (scSlotZeroTime . clbConfigSlotConfig . _clbConfig)
@@ -514,46 +502,28 @@ submitTx ::
   C.Tx era ->
   ClbT era m (ValidationResult era)
 submitTx apiTx@(C.ShelleyTx _ tx) = do
-  state <- gets (^. emulatedLedgerState)
+  state <- gets (^. chainState)
   globals <- getGlobals
   case applyTx ValidateAll globals state tx of
     Right (newState, vtx) -> do
       let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
       modify $
-        over emulatedLedgerState (const $ nextSlot newState)
-          . over mockDatums (`M.union` txDatums)
+        over chainState (const $ nextSlot newState)
+          . over knownDatums (`M.union` txDatums)
       return $ Success newState vtx
     Left err -> return $ Fail tx err
 
--- | Validate a tx upon its submission, i.e. before taking it into the mempool.
+-- | Validate a tx against 'EmulatedLedgerState' given some 'Globals'.
 validateTx ::
-  (Monad m, IsCardanoLedgerEra era) =>
+  (IsCardanoLedgerEra era) =>
+  Globals ->
+  EmulatedLedgerState era ->
   C.Tx era ->
-  ClbT era m (ValidationResult era)
-validateTx (C.ShelleyTx _ tx) = do
-  -- TODO: omit when not needed
-  dumpUtxoState
-  ClbState {_emulatedLedgerState} <- get
-  globals <- getGlobals
-  case applyTx ValidateAll globals _emulatedLedgerState tx of
-    Right (newState, vtx) -> return $ Success newState vtx
-    Left err -> return $ Fail tx err
-
--- commitTx :: (Monad m, IsCardanoLedgerEra era) => ValidationResult era -> ClbT era m (Maybe (OnChainTx era))
--- commitTx (Success _newState vtx) = do
---   state@ClbState {_mockDatums} <- get
---   let apiTx = C.ShelleyTx shelleyBasedEra (L.extractTx $ getOnChainTx vtx)
---   let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
---   put $ state {_emulatedLedgerState = newState, _mockDatums = M.union _mockDatums txDatums}
---   pure $ Just vtx
--- commitTx (Fail _tx err) = do
---   logError $
---     "Transaction Failed: "
---       <> show err
---   -- TODO: Should we include transaction details ?
---   -- <> " - Transaction Details: "
---   -- <> show tx
---   pure Nothing
+  ValidationResult era
+validateTx globals els (C.ShelleyTx _ tx) =
+  case applyTx ValidateAll globals els tx of
+    Right (newState, vtx) -> Success newState vtx
+    Left err -> Fail tx err
 
 {- | Given a 'C.TxBody from a 'C.Tx era', return the datums and redeemers along
 with their hashes.
@@ -585,7 +555,7 @@ datumHash (PV2.Datum (PV2.BuiltinData dat)) =
 
 dumpUtxoState :: forall m era. (IsCardanoLedgerEra era, Monad m) => ClbT era m ()
 dumpUtxoState = do
-  s <- gets ((^. ledgerState) . _emulatedLedgerState)
+  s <- gets (^. chainState . ledgerState)
   logInfo $ LogEntry Info $ ppShow s
 
 --------------------------------------------------------------------------------
@@ -595,7 +565,7 @@ dumpUtxoState = do
 {- | Checks that script runs without errors and returns pretty printed failure
  if something bad happens.
 -}
-checkErrors :: Clb era (Maybe String)
+checkErrors :: (Monad m) => ClbT era m (Maybe String)
 checkErrors = do
   failures <- fromLog <$> getFails
   pure $
@@ -604,8 +574,8 @@ checkErrors = do
       else Just (init . unlines $ fmap show failures)
 
 -- | Return list of failures
-getFails :: Clb era (Log FailReason)
-getFails = gets _mockFails
+getFails :: (Monad m) => ClbT era m (Log FailReason)
+getFails = gets _clbFailures
 
 --------------------------------------------------------------------------------
 -- Transactions validation TODO: factor out
@@ -670,7 +640,7 @@ waitSlot slot = do
   -- TODO: shall we throw?
   when (currSlot < slot) $
     modify $
-      over emulatedLedgerState $
+      over chainState $
         setSlot slot
 
 -- Additional actions
@@ -679,7 +649,7 @@ modifySlot :: (Monad m) => (Slot -> Slot) -> ClbT era m Slot
 modifySlot f = do
   logInfo $ LogEntry Info "modify slot..."
   newSlot <- f . toSlot <$> getCurrentSlot
-  modify $ over emulatedLedgerState $ setSlot $ fromSlot newSlot
+  modify $ over chainState $ setSlot $ fromSlot newSlot
   return newSlot
 
 toSlot :: SlotNo -> Slot
@@ -687,41 +657,3 @@ toSlot = Slot . fromIntegral . L.unSlotNo
 
 fromSlot :: Slot -> SlotNo
 fromSlot = fromIntegral . TimeSlot.getSlot
-
-{- | Evaluates all Txs in the mem pool and adds valid ones to a new block.
- Invalid transaxtions are just get dumped.
- TODO: Then updates currentBlock @EmulatedLedgerState to latest Block
--}
-processBlock :: (Monad m, IsCardanoLedgerEra era) => ClbT era m (Maybe (Block era, String))
-processBlock = do
-  poolTxs <- gets _txPool
-  case poolTxs of
-    [] -> return Nothing
-    txs -> do
-      logInfo $ LogEntry Info "Producing a new block."
-      -- dumpUtxoState
-      newBlock <- catMaybes <$> mapM (processSingleTx . getEmulatorEraTx) txs
-      -- TODO: this should be done atomically
-      modify (over txPool (const mempty)) -- Clears txPool
-      modify (over chainNewestFirst (newBlock :)) -- Add the block
-      -- Emulator Logs
-      theLog <- gets _mockInfo
-      modify (over mockInfo (const mempty))
-      let logDoc = ppLog theLog
-      let options = defaultLayoutOptions {layoutPageWidth = AvailablePerLine 150 1.0}
-      let logString = renderString $ layoutPretty options logDoc
-      let mockLog = "\nEmulator log :\n--------------\n" <> logString
-      return $ Just (newBlock, mockLog)
-
--- This is called when we move a tx from mempool into a new block.
-processSingleTx :: (Monad m, IsCardanoLedgerEra era) => C.Tx era -> ClbT era m (Maybe (OnChainTx era))
--- processSingleTx tx = validateTx tx >>= commitTx
-processSingleTx tx@(C.ShelleyTx _ stx) = do
-  state@ClbState {_mockDatums} <- get
-  let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody tx
-  -- put $ state {_emulatedLedgerState = newState, _mockDatums = M.union _mockDatums txDatums}
-  put $ state {_mockDatums = M.union _mockDatums txDatums}
-  pure $ Just $ OnChainTx $ L.unsafeMakeValidated stx
-
-addTxToPool :: CardanoTx era -> ClbState era -> ClbState era
-addTxToPool tx = over txPool (tx :)

@@ -4,7 +4,7 @@ import Cardano.Api.Value (lovelaceToValue)
 import Cardano.Ledger.Coin (Coin (Coin))
 
 import Clb (
-  ClbState (_mockInfo),
+  ClbState (_clbLog),
   checkErrors,
   defaultBabbageClbConfig,
   dumpUtxoState,
@@ -23,7 +23,7 @@ main = do
   let (_mbErrors, clb) =
         runClb (dumpUtxoState >> checkErrors) $
           initClb defaultBabbageClbConfig _dummyTotalNotUsedNow perWallet Nothing
-  let logDoc = ppLog $ _mockInfo clb
+  let logDoc = ppLog $ _clbLog clb
   let options = defaultLayoutOptions {layoutPageWidth = AvailablePerLine 150 1.0}
   let logString = renderString $ layoutPretty options logDoc
   let mockLog = "\nEmulator log :\n--------------\n" <> logString

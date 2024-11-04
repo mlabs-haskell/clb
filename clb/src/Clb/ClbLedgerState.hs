@@ -94,7 +94,6 @@ initialState ::
   EmulatedLedgerState era
 initialState params tc =
   let L.ShelleyGenesisStaking {sgsPools} = tc ^. tcInitialStakingL
-      -- state = trace (show sgsPools) $ EmulatedLedgerState
       state =
         EmulatedLedgerState
           { _ledgerEnv =

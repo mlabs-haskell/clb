@@ -188,7 +188,7 @@ defaultConwayParams =
               , ucppDRepActivity = L.EpochInterval 20
               , ucppCommitteeMinSize = 0
               , ucppCommitteeMaxTermLength = L.EpochInterval 73
-              , ucppPlutusV3CostModel = LT.testingCostModelV3 -- FIXME: This is temporary.
+              , ucppPlutusV3CostModel = LT.testingCostModelV3 -- TODO: This is temporary, update.
               }
             defaultBabbageParams
    in coerce $

@@ -10,12 +10,13 @@
 {-# LANGUAGE TypeOperators #-}
 
 module Cardano.Node.Socket.Emulator.Server (
-  ServerHandler,
+  -- * Server runner
   runServerNode,
-  processBlock,
+  ServerHandler,
+
+  -- * Actions
+  tryProduceBlock,
   modifySlot,
-  -- addTx,
-  processChainEffects,
 ) where
 
 import Control.Concurrent (
@@ -41,11 +42,9 @@ import Control.Concurrent.STM (
   writeTChan,
   writeTQueue,
  )
-import Control.Exception (throwIO)
-import Control.Lens (over, (.~), (^.))
-import Control.Monad (forever, void, when)
-import Control.Monad.Freer (send)
-import Control.Monad.Freer.Extras.Log (LogMsg (LMessage))
+import Control.Lens (over, (&), (.~), (^.))
+import Control.Monad (forever, void)
+import Control.Monad.Class.MonadTimer (MonadDelay (threadDelay), MonadTimer)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (
   MonadReader (ask),
@@ -53,29 +52,33 @@ import Control.Monad.Reader (
   runReader,
  )
 import Control.Tracer (nullTracer)
+import Data.ByteString.Lazy qualified as BSL
 import Data.ByteString.Lazy qualified as LBS
-import Data.Coerce (coerce)
-import Data.Foldable (traverse_)
-import Data.List (intersect)
-import Data.Maybe (isJust, listToMaybe)
-import Data.SOP.Strict (NS (S, Z))
-import Data.Void (Void)
 
 import Cardano.BM.Data.Trace (Trace)
 import Cardano.Slotting.Slot (SlotNo (..), WithOrigin (..))
-
--- import Ledger (Block, CardanoTx (..), Slot (..))
-import Ouroboros.Consensus.Cardano.Block (CardanoBlock, CardanoEras, ConwayEra, StandardBabbage, StandardConway)
+import Data.Coerce (coerce)
+import Data.List (intersect)
+import Data.Maybe (catMaybes, listToMaybe)
+import Data.SOP.Strict (NS (S, Z))
+import Data.Void (Void)
+import Ouroboros.Consensus.Cardano.Block (CardanoBlock, StandardBabbage, StandardConway)
 import Ouroboros.Consensus.HardFork.Combinator qualified as Consensus
 import Ouroboros.Consensus.Ledger.Query (Query (..))
 import Ouroboros.Consensus.Ledger.SupportsMempool (ApplyTxErr)
-import Ouroboros.Consensus.Shelley.Eras (StandardCrypto, StandardShelley)
+import Ouroboros.Consensus.Shelley.Eras (StandardCrypto)
 import Ouroboros.Consensus.Shelley.Ledger qualified as Shelley
 import Ouroboros.Consensus.TypeFamilyWrappers (WrapApplyTxErr (WrapApplyTxErr))
 import Ouroboros.Network.Block (Point (..), pointSlot)
 import Ouroboros.Network.Block qualified as O
-import Ouroboros.Network.IOManager
-import Ouroboros.Network.Mux
+import Ouroboros.Network.IOManager (withIOManager)
+import Ouroboros.Network.Mux (
+  MiniProtocolCb (MiniProtocolCb),
+  MuxMode (ResponderMode),
+  RunMiniProtocol (ResponderProtocolOnly),
+  RunMiniProtocolWithMinimalCtx,
+  mkMiniProtocolCbFromPeer,
+ )
 import Ouroboros.Network.NodeToClient (
   NodeToClientProtocols (..),
   nodeToClientCodecCBORTerm,
@@ -90,61 +93,101 @@ import Ouroboros.Network.Protocol.ChainSync.Server (
   ServerStNext (..),
  )
 import Ouroboros.Network.Protocol.ChainSync.Server qualified as ChainSync
-import Ouroboros.Network.Protocol.Handshake.Codec
-import Ouroboros.Network.Protocol.Handshake.Version
+import Ouroboros.Network.Protocol.Handshake.Codec (
+  cborTermVersionDataCodec,
+  noTimeLimitsHandshake,
+  nodeToClientHandshakeCodec,
+ )
+import Ouroboros.Network.Protocol.Handshake.Version (
+  Acceptable (acceptableVersion),
+  Queryable (queryVersion),
+ )
 import Ouroboros.Network.Protocol.LocalStateQuery.Server qualified as Query
 import Ouroboros.Network.Protocol.LocalStateQuery.Server qualified as StateQuery
 import Ouroboros.Network.Protocol.LocalTxSubmission.Server qualified as TxSubmission
 import Ouroboros.Network.Protocol.LocalTxSubmission.Type qualified as TxSubmission
-import Ouroboros.Network.Snocket
-import Ouroboros.Network.Socket
-import Plutus.Monitoring.Util qualified as LM
+import Ouroboros.Network.Snocket (
+  LocalAddress,
+  localAddressFromPath,
+  localSnocket,
+  makeLocalBearer,
+ )
+import Ouroboros.Network.Socket (
+  AcceptedConnectionsLimit (AcceptedConnectionsLimit),
+  HandshakeCallbacks (HandshakeCallbacks),
+  SomeResponderApplication (SomeResponderApplication),
+  cleanNetworkMutableState,
+  newNetworkMutableState,
+  nullNetworkServerTracers,
+  withServerNode,
+ )
 
 import Cardano.Api qualified as C
 import Cardano.Api.InMode qualified as C
-
-import Clb qualified as E
-import Clb.ClbLedgerState as E
-
--- import Cardano.Node.Emulator.API qualified as E
--- import Cardano.Node.Emulator.Internal.API (EmulatorMsg, EmulatorT)
--- import Cardano.Node.Emulator.Internal.API qualified as E
--- import Cardano.Node.Emulator.Internal.Node.Chain qualified as Chain
--- import Cardano.Node.Emulator.Internal.Node.Validation qualified as Validation
+import Cardano.Api.Shelley qualified as C
+import Cardano.Ledger.Shelley.API qualified as L
 import Cardano.Node.Socket.Emulator.Query (HandleQuery (handleQuery))
 import Cardano.Node.Socket.Emulator.Types (
   AppState (..),
   BlockId (BlockId),
-  SocketEmulatorState (..),
+  EmulatorMsg,
   Tip,
+  addTxToPool,
   blockId,
+  cachedState,
+  chainNewestFirst,
   chainSyncCodec,
-  doNothingResponderProtocol,
-  emulatorState,
+  channel,
+  clbState,
   getChannel,
   getTip,
   nodeToClientVersion,
   nodeToClientVersionData,
-  -- runChainEffects,
-  -- setTip,
-
-  runChainEffects,
-  setTip,
+  runClb,
+  runClbWithApp,
+  setTip',
   socketEmulatorState,
   stateQueryCodec,
   toCardanoBlock,
+  txPool,
   txSubmissionCodec,
  )
-import Clb (Block, ClbState (ClbState), ClbT, ValidationResult (..), addTxToPool, applyTx, emulatedLedgerState, unwrapClbT, validateTx)
+import Clb (
+  Block,
+  ClbT,
+  LogEntry (..),
+  ValidationResult (..),
+  unwrapClbT,
+  validateTx,
+ )
+import Clb qualified as E
+import Clb.ClbLedgerState qualified as E
+import Clb.Era (IsCardanoLedgerEra)
 import Clb.TimeSlot (Slot)
-import Control.Monad.State (StateT (runStateT))
+import Control.Monad.Freer.Extras (logInfo)
+import Control.Monad.State (evalStateT, modify)
 import Data.Data (Proxy (..))
 import Ouroboros.Consensus.Byron.Ledger.Block (ByronBlock)
 import Ouroboros.Consensus.Protocol.Praos (Praos)
-import Ouroboros.Consensus.Protocol.TPraos (TPraos)
 import Ouroboros.Consensus.Shelley.Ledger.Block (ShelleyBlock)
+import Plutus.Monitoring.Util (runLogEffects)
 
-type EmulatorMsg = String
+-- -----------------------------------------------------------------------------
+-- Server API
+-- -----------------------------------------------------------------------------
+
+{- | A handler used to pass around the path to the server
+     and channels used for controlling the server.
+-}
+data ServerHandler = ServerHandler
+  { shSocketPath :: FilePath
+  , shCommandChannel :: CommandChannel
+  }
+
+{- | The client (here client is the code that calls the server)
+     will send a `ServerCommand` and the server will
+     respond with a `ServerResponse`.
+-}
 data CommandChannel = CommandChannel
   { ccCommand :: TQueue ServerCommand
   , ccResponse :: TQueue ServerResponse
@@ -156,36 +199,20 @@ data CommandChannel = CommandChannel
 -}
 newtype LocalChannel era = LocalChannel (TChan (Block era))
 
-{- | A handler used to pass around the path to the server
-     and channels used for controlling the server.
--}
-data ServerHandler = ServerHandler
-  { shSocketPath :: FilePath
-  , -- The client will send a `ServerCommand` and the server will
-    -- respond with a `ServerResponse`.
-    shCommandChannel :: CommandChannel
-  }
-
 {- | The commands that control the server. This API is not part of the client
      interface, and in order to call them directly you will need access to the
      returned ServerHandler
 -}
 data ServerCommand where
-  ProcessBlock ::
-    -- | Try to produce a new block.
-    ServerCommand
-  ModifySlot ::
-    (Slot -> Slot) ->
-    -- | Switch to some (usually next) slot.
-    -- AddTx :: (C.Tx C.ConwayEra) -> ServerCommand
-    ServerCommand
+  -- | Try to produce a new block.
+  TryProduceBlock :: ServerCommand
+  -- | Switch to some (usually next) slot.
+  ModifySlot :: (Slot -> Slot) -> ServerCommand
 
 instance Show ServerCommand where
   show = \case
-    ProcessBlock -> "ProcessBlock"
+    TryProduceBlock -> "TryProduceBlock"
     ModifySlot _ -> "ModifySlot"
-
--- AddTx t -> "AddTx " <> show t
 
 {- | The response from the server. Can be used for the information
      passed back, or for synchronisation.
@@ -195,11 +222,34 @@ data ServerResponse
     BlockAdded (Maybe (Block C.ConwayEra))
   | SlotChanged Slot
 
--- deriving (Show)
+{- | Start the server in a new thread, and return a server handler
+     used to control the server
+-}
+runServerNode ::
+  (MonadIO m) =>
+  Trace IO EmulatorMsg ->
+  C.NetworkMagic ->
+  FilePath ->
+  -- |  Number of blocks to keep in the global channel
+  Integer ->
+  AppState C.ConwayEra ->
+  m ServerHandler
+runServerNode trace magic shSocketPath k appState = liftIO $ do
+  -- Allocate MVar for the global state and run protocol loop
+  serverState <- newMVar appState
+  void $ forkIO . void $ protocolLoop trace magic shSocketPath serverState
+  -- Run command handle loop
+  shCommandChannel <- CommandChannel <$> newTQueueIO <*> newTQueueIO
+  void $ forkIO . forever $ handleCommand trace shCommandChannel serverState
+  -- Block pruning thread
+  globalChannel <- getChannel serverState
+  void $ runPruneChainThread k globalChannel
+  -- Return the handler to work with the server
+  pure $ ServerHandler {shSocketPath, shCommandChannel}
 
-processBlock :: (MonadIO m) => ServerHandler -> m (Maybe (Block C.ConwayEra))
-processBlock ServerHandler {shCommandChannel} = do
-  liftIO $ atomically $ writeTQueue (ccCommand shCommandChannel) ProcessBlock
+tryProduceBlock :: (MonadIO m) => ServerHandler -> m (Maybe (Block C.ConwayEra))
+tryProduceBlock ServerHandler {shCommandChannel} = do
+  liftIO $ atomically $ writeTQueue (ccCommand shCommandChannel) TryProduceBlock
   -- Wait for the server to finish processing blocks.
   mBlock <-
     liftIO $
@@ -208,9 +258,9 @@ processBlock ServerHandler {shCommandChannel} = do
           BlockAdded block -> do
             pure block
           _ -> retry
-  case mBlock of
-    Just b -> liftIO $ putStrLn $ "A new block has been produced:" <> show b
-    Nothing -> pure ()
+  liftIO $ putStrLn $ case mBlock of
+    Just b -> "A new block has been produced:" <> show b
+    Nothing -> "There were no transactions in mempool, no block was produced."
   pure mBlock
 
 modifySlot :: (MonadIO m) => (Slot -> Slot) -> ServerHandler -> m Slot
@@ -223,41 +273,9 @@ modifySlot f ServerHandler {shCommandChannel} = do
         SlotChanged slot -> pure slot
         _ -> retry
 
--- addTx :: (MonadIO m) => ServerHandler -> C.Tx C.ConwayEra -> m ()
--- addTx ServerHandler {shCommandChannel} tx = do
---   liftIO $ atomically $ writeTQueue (ccCommand shCommandChannel) $ AddTx tx
-
-{- Create a thread that keeps the number of blocks in the channel to the maximum
-   limit of K -}
-pruneChain :: (MonadIO m) => Integer -> TChan (Block era) -> m ThreadId
-pruneChain k original = do
-  localChannel <- liftIO $ atomically $ cloneTChan original
-  liftIO . forkIO $ go k localChannel
-  where
-    go :: (MonadIO m) => Integer -> TChan (Block era) -> m ()
-    go k' localChannel = do
-      -- Wait for data on the channel
-      _ <- liftIO $ atomically $ readTChan localChannel
-      {- When the counter reaches zero, there are K blocks in the
-                original channel and we start to remove the oldest stored
-                block by reading it. -}
-      if k' == 0
-        then do
-          liftIO $ atomically (readTChan original) >> go 0 localChannel
-        else do
-          go (k' - 1) localChannel
-
-processChainEffects ::
-  Trace IO EmulatorMsg ->
-  MVar (AppState C.ConwayEra) ->
-  ClbT C.ConwayEra IO a ->
-  IO a
-processChainEffects trace stateVar eff = do
-  (events, result) <- runChainEffects stateVar eff
-  -- TODO: handle logs from clb
-  -- LM.runLogEffects trace $ do
-  --   traverse_ (send . LMessage) events
-  either throwIO pure result
+-- -----------------------------------------------------------------------------
+-- Command handling
+-- -----------------------------------------------------------------------------
 
 handleCommand ::
   (MonadIO m) =>
@@ -266,58 +284,166 @@ handleCommand ::
   MVar (AppState C.ConwayEra) ->
   m ()
 handleCommand trace CommandChannel {ccCommand, ccResponse} mvAppState = do
-  mLogs <-
-    liftIO $
-      atomically (readTQueue ccCommand) >>= \case
-        -- AddTx tx -> do
-        --   -- process $ void $ E.sendTx tx
-        --   pure Nothing
-        ModifySlot f -> do
-          s <- process $ E.modifySlot f
-          atomically $
-            writeTQueue ccResponse (SlotChanged s)
-          pure Nothing
-        ProcessBlock -> do
-          mbRet <- process E.processBlock
-          ch <- getChannel mvAppState
-          case mbRet of
-            Nothing -> do
-              atomically $ writeTQueue ccResponse (BlockAdded Nothing)
-              pure Nothing
-            Just (block, logs) -> do
-              setTip mvAppState block
-              atomically $ do
-                writeTChan ch block
-                writeTQueue ccResponse (BlockAdded $ Just block)
-              pure $ Just logs
-  case mLogs of
-    Nothing -> pure ()
-    Just logs -> liftIO $ putStrLn logs
-  where
-    process :: ClbT C.ConwayEra IO a -> IO a
-    process = processChainEffects trace mvAppState
+  liftIO $
+    atomically (readTQueue ccCommand) >>= \case
+      ModifySlot f -> do
+        s <- runClb trace mvAppState (E.modifySlot f)
+        atomically $
+          writeTQueue ccResponse (SlotChanged s)
+      TryProduceBlock -> do
+        mbRet <- runClbWithApp mvAppState processBlock
+        case mbRet of
+          (_, Nothing) -> do
+            atomically $ writeTQueue ccResponse (BlockAdded Nothing)
+          (newAppState, Just block) -> do
+            let ch = newAppState ^. (socketEmulatorState . channel)
+            atomically $ do
+              writeTChan ch block
+              writeTQueue ccResponse (BlockAdded $ Just block)
 
-{- | Start the server in a new thread, and return a server handler
-     used to control the server
+{- | Evaluates all Txs in the mem pool and adds valid ones to a new block.
+ Invalid transaxtions are just get dumped.
+ TODO: Then updates currentBlock @EmulatedLedgerState to latest Block
 -}
-runServerNode ::
+processBlock ::
+  (Monad m, IsCardanoLedgerEra era) =>
+  AppState era ->
+  ClbT era m (AppState era, Maybe (Block era))
+processBlock appState = do
+  let poolTxs = appState ^. (socketEmulatorState . txPool)
+  case poolTxs of
+    [] -> do
+      E.logInfo $ LogEntry E.Info "Skipping block producing, txPool is empty."
+      return (appState, Nothing)
+    txs -> do
+      E.logInfo $ LogEntry E.Info "Producing a new block."
+      newBlock <- catMaybes <$> mapM (processSingleTx . E.getEmulatorEraTx) txs
+      E.logInfo $ LogEntry E.Debug $ "Block is: " <> show newBlock
+      E.logInfo $ LogEntry E.Debug "Updating chain state..."
+      modify $
+        over
+          E.chainState
+          (const $ appState ^. (socketEmulatorState . cachedState))
+      let newAppState =
+            appState
+              & over (socketEmulatorState . txPool) (const mempty)
+              & over (socketEmulatorState . chainNewestFirst) (newBlock :)
+              & flip setTip' newBlock
+      return (newAppState, Just newBlock)
+
+-- -----------------------------------------------------------------------------
+-- Protocol Loop
+-- -----------------------------------------------------------------------------
+
+{- This is boilerplate code that sets up the node protocols,
+   you can find in:
+     ouroboros-network/ouroboros-network/demo/chain-sync.hs -}
+
+protocolLoop ::
   (MonadIO m) =>
   Trace IO EmulatorMsg ->
   C.NetworkMagic ->
   FilePath ->
-  Integer ->
-  AppState C.ConwayEra ->
-  m ServerHandler
-runServerNode trace magic shSocketPath k initialState = liftIO $ do
-  serverState <- newMVar initialState
-  shCommandChannel <- CommandChannel <$> newTQueueIO <*> newTQueueIO
-  globalChannel <- getChannel serverState
-  void $ forkIO . void $ protocolLoop magic shSocketPath serverState
-  void $ forkIO . forever $ handleCommand trace shCommandChannel serverState
-  void $ pruneChain k globalChannel
-  pure $ ServerHandler {shSocketPath, shCommandChannel}
+  MVar (AppState C.ConwayEra) ->
+  m Void
+protocolLoop trace magic socketPath internalState = liftIO $ withIOManager $ \iocp -> do
+  networkState <- newNetworkMutableState
+  _ <- async $ cleanNetworkMutableState networkState
+  withServerNode
+    (localSnocket iocp)
+    makeLocalBearer
+    (\_ _ -> pure ())
+    nullNetworkServerTracers
+    networkState
+    (AcceptedConnectionsLimit maxBound maxBound 0)
+    (localAddressFromPath socketPath)
+    nodeToClientHandshakeCodec
+    noTimeLimitsHandshake
+    (cborTermVersionDataCodec nodeToClientCodecCBORTerm)
+    (HandshakeCallbacks acceptableVersion queryVersion)
+    ( SomeResponderApplication
+        <$> versionedNodeToClientProtocols
+          nodeToClientVersion
+          (nodeToClientVersionData magic)
+          (nodeToClientProtocols trace internalState)
+    )
+    nullErrorPolicies
+    $ \_ serverAsync -> wait serverAsync
 
--- * ChainSync protocol
+nodeToClientProtocols ::
+  Trace IO EmulatorMsg ->
+  MVar (AppState C.ConwayEra) ->
+  NodeToClientProtocols 'ResponderMode LocalAddress LBS.ByteString IO Void ()
+nodeToClientProtocols trace internalState =
+  NodeToClientProtocols
+    { localChainSyncProtocol = chainSync internalState
+    , localTxSubmissionProtocol = txSubmission trace internalState
+    , localStateQueryProtocol = stateQuery trace internalState
+    , localTxMonitorProtocol = doNothingResponderProtocol
+    }
+
+chainSync ::
+  MVar (AppState C.ConwayEra) ->
+  RunMiniProtocolWithMinimalCtx 'ResponderMode LocalAddress LBS.ByteString IO Void ()
+chainSync mvChainState =
+  ResponderProtocolOnly $
+    mkMiniProtocolCbFromPeer $
+      const
+        ( nullTracer
+        , chainSyncCodec
+        , ChainSync.chainSyncServerPeer
+            ( runReader
+                (hoistChainSync chainSyncServer)
+                mvChainState
+            )
+        )
+
+txSubmission ::
+  Trace IO EmulatorMsg ->
+  MVar (AppState C.ConwayEra) ->
+  RunMiniProtocolWithMinimalCtx 'ResponderMode LocalAddress LBS.ByteString IO Void ()
+txSubmission trace mvChainState =
+  ResponderProtocolOnly $
+    mkMiniProtocolCbFromPeer $
+      const
+        ( nullTracer
+        , txSubmissionCodec
+        , TxSubmission.localTxSubmissionServerPeer
+            (pure $ txSubmissionServer trace mvChainState)
+        )
+
+stateQuery ::
+  (HandleQuery era) =>
+  Trace IO EmulatorMsg ->
+  MVar (AppState era) ->
+  RunMiniProtocolWithMinimalCtx 'ResponderMode LocalAddress LBS.ByteString IO Void ()
+stateQuery trace mvChainState =
+  ResponderProtocolOnly $
+    mkMiniProtocolCbFromPeer $
+      const
+        ( nullTracer
+        , stateQueryCodec
+        , Query.localStateQueryServerPeer
+            (stateQueryServer trace mvChainState)
+        )
+
+doNothingResponderProtocol ::
+  (MonadTimer m) =>
+  RunMiniProtocolWithMinimalCtx
+    'ResponderMode
+    LocalAddress
+    BSL.ByteString
+    m
+    Void
+    a
+doNothingResponderProtocol =
+  ResponderProtocolOnly $
+    MiniProtocolCb $
+      \_ _ -> forever $ threadDelay 1_000_000
+
+-- -----------------------------------------------------------------------------
+-- ChainSync protocol
+-- -----------------------------------------------------------------------------
 
 {- A monad for running all code executed when a state
    transition is invoked. It makes the implementation of
@@ -391,14 +517,13 @@ findIntersect clientPoints = do
   let blocks =
         appState
           ^. socketEmulatorState
-            . emulatorState
-            . E.chainNewestFirst
+            . chainNewestFirst
       slot =
-        getSlot $
+        E.getSlot $
           appState
             ^. socketEmulatorState
-              . emulatorState
-              . E.emulatedLedgerState
+              . clbState
+              . E.chainState
   serverPoints <- getChainPoints blocks slot
   let point =
         listToMaybe $
@@ -418,6 +543,35 @@ findIntersect clientPoints = do
         tip'
         -- Resuming from point'.
         (ChainSyncServer $ cloneChainFrom (pointOffset point') >>= idleState)
+
+-- * Calculating intersections
+
+-- Currently selects all points from the blockchain.
+getChainPoints ::
+  (MonadIO m, block ~ CardanoBlock StandardCrypto) =>
+  [Block C.ConwayEra] ->
+  Slot ->
+  m [Point block]
+getChainPoints chain slot = do
+  pure $ zipWith mkPoint [slot, slot - 1 .. 1] chain ++ [Point Origin]
+  where
+    mkPoint s block =
+      Point
+        ( At
+            ( OP.Block
+                (fromIntegral s)
+                (coerce $ blockId block)
+            )
+        )
+
+-- Given a `Point` find its offset into the chain.
+pointOffset ::
+  Point block ->
+  Integer
+pointOffset pt =
+  case pointSlot pt of
+    Origin -> 0
+    At (SlotNo s) -> fromIntegral s
 
 {- This is a wrapper around the creation of a `ServerStNext` -}
 sendRollForward ::
@@ -535,124 +689,9 @@ hoistStNext (SendMsgRollForward header tip' nextState') =
 hoistStNext (SendMsgRollBackward header tip' nextState') =
   SendMsgRollBackward header tip' <$> hoistChainSync nextState'
 
-{- This is boilerplate code that sets up the node protocols,
-   you can find in:
-     ouroboros-network/ouroboros-network/demo/chain-sync.hs -}
-
-protocolLoop ::
-  (MonadIO m) =>
-  C.NetworkMagic ->
-  FilePath ->
-  MVar (AppState C.ConwayEra) ->
-  m Void
-protocolLoop magic socketPath internalState = liftIO $ withIOManager $ \iocp -> do
-  networkState <- newNetworkMutableState
-  _ <- async $ cleanNetworkMutableState networkState
-  withServerNode
-    (localSnocket iocp)
-    makeLocalBearer
-    (\_ _ -> pure ())
-    nullNetworkServerTracers
-    networkState
-    (AcceptedConnectionsLimit maxBound maxBound 0)
-    (localAddressFromPath socketPath)
-    nodeToClientHandshakeCodec
-    noTimeLimitsHandshake
-    (cborTermVersionDataCodec nodeToClientCodecCBORTerm)
-    (HandshakeCallbacks acceptableVersion queryVersion)
-    ( SomeResponderApplication
-        <$> versionedNodeToClientProtocols
-          nodeToClientVersion
-          (nodeToClientVersionData magic)
-          (nodeToClientProtocols internalState)
-    )
-    nullErrorPolicies
-    $ \_ serverAsync -> wait serverAsync
-
-nodeToClientProtocols ::
-  MVar (AppState C.ConwayEra) ->
-  NodeToClientProtocols 'ResponderMode LocalAddress LBS.ByteString IO Void ()
-nodeToClientProtocols internalState =
-  NodeToClientProtocols
-    { localChainSyncProtocol = chainSync internalState
-    , localTxSubmissionProtocol = txSubmission internalState
-    , localStateQueryProtocol = stateQuery internalState
-    , localTxMonitorProtocol = doNothingResponderProtocol
-    }
-
-chainSync ::
-  MVar (AppState C.ConwayEra) ->
-  RunMiniProtocolWithMinimalCtx 'ResponderMode LocalAddress LBS.ByteString IO Void ()
-chainSync mvChainState =
-  ResponderProtocolOnly $
-    mkMiniProtocolCbFromPeer $
-      const
-        ( nullTracer
-        , chainSyncCodec
-        , ChainSync.chainSyncServerPeer
-            ( runReader
-                (hoistChainSync chainSyncServer)
-                mvChainState
-            )
-        )
-
-txSubmission ::
-  MVar (AppState C.ConwayEra) ->
-  RunMiniProtocolWithMinimalCtx 'ResponderMode LocalAddress LBS.ByteString IO Void ()
-txSubmission mvChainState =
-  ResponderProtocolOnly $
-    mkMiniProtocolCbFromPeer $
-      const
-        ( nullTracer
-        , txSubmissionCodec
-        , TxSubmission.localTxSubmissionServerPeer
-            (pure $ txSubmissionServer mvChainState)
-        )
-
-stateQuery ::
-  (HandleQuery era) =>
-  MVar (AppState era) ->
-  RunMiniProtocolWithMinimalCtx 'ResponderMode LocalAddress LBS.ByteString IO Void ()
-stateQuery mvChainState =
-  ResponderProtocolOnly $
-    mkMiniProtocolCbFromPeer $
-      const
-        ( nullTracer
-        , stateQueryCodec
-        , Query.localStateQueryServerPeer
-            (stateQueryServer mvChainState)
-        )
-
--- * Computing intersections
-
--- Given a `Point` find its offset into the chain.
-pointOffset ::
-  Point block ->
-  Integer
-pointOffset pt =
-  case pointSlot pt of
-    Origin -> 0
-    At (SlotNo s) -> fromIntegral s
-
--- Currently selects all points from the blockchain.
-getChainPoints ::
-  (MonadIO m, block ~ CardanoBlock StandardCrypto) =>
-  [Block C.ConwayEra] ->
-  Slot ->
-  m [Point block]
-getChainPoints chain slot = do
-  pure $ zipWith mkPoint [slot, slot - 1 .. 1] chain ++ [Point Origin]
-  where
-    mkPoint s block =
-      Point
-        ( At
-            ( OP.Block
-                (fromIntegral s)
-                (coerce $ blockId block)
-            )
-        )
-
--- * TxSubmission protocol
+-- -----------------------------------------------------------------------------
+-- TxSubmission protocol
+-- -----------------------------------------------------------------------------
 
 {- I did not use the same approach for this protocol as I did
    for the `ChainSync`. This protocol has only one state and
@@ -660,48 +699,50 @@ getChainPoints chain slot = do
 
 txSubmissionServer ::
   (block ~ CardanoBlock StandardCrypto) =>
+  Trace IO EmulatorMsg ->
   MVar (AppState C.ConwayEra) ->
   TxSubmission.LocalTxSubmissionServer (Shelley.GenTx block) (ApplyTxErr block) IO ()
-txSubmissionServer state =
+txSubmissionServer trace state =
   TxSubmission.LocalTxSubmissionServer
-    { TxSubmission.recvMsgSubmitTx = fmap (,txSubmissionServer state) . submitTx state
+    { TxSubmission.recvMsgSubmitTx = fmap (,txSubmissionServer trace state) . submitTx trace state
     , TxSubmission.recvMsgDone = ()
     }
 
 submitTx ::
   (block ~ CardanoBlock StandardCrypto) =>
+  Trace IO EmulatorMsg ->
   MVar (AppState C.ConwayEra) ->
   Shelley.GenTx block ->
   IO (TxSubmission.SubmitResult (ApplyTxErr block))
-submitTx state tx = case C.fromConsensusGenTx tx of
+submitTx trace state tx = case C.fromConsensusGenTx tx of
   C.TxInMode C.ShelleyBasedEraConway shelleyTx -> do
-    putStrLn $ "New tx: " ++ show tx
-    AppState
-      (SocketEmulatorState clbState@(ClbState chainState _ _ _ _ _ _) _ _)
-      _
-      _ <-
-      readMVar state
-    (res, _state) <- runStateT (unwrapClbT $ Clb.validateTx shelleyTx) clbState
-    case res of
-      Fail _ err ->
-        pure $
-          TxSubmission.SubmitFail
-            ( Consensus.HardForkApplyTxErrFromEra
-                (Consensus.OneEraApplyTxErr (S (S (S (S (S (S (Z (WrapApplyTxErr err)))))))))
-            )
-      Success ls' _tx -> do
-        let ctx = CardanoEmulatorEraTx shelleyTx
-        modifyMVar_
-          state
-          ( pure
-              . over
-                (socketEmulatorState . emulatorState)
-                -- Here we update the state and put the tx into the pool
-                -- TODO: shall we handle datums here!
-                (addTxToPool ctx . (emulatedLedgerState .~ ls'))
-                -- (addTxToPool ctx)
-          )
-        pure TxSubmission.SubmitSuccess
+    runLogEffects trace $ do
+      logInfo $ "New tx: " ++ show tx
+      appState <- liftIO $ readMVar state
+      let cs = appState ^. (socketEmulatorState . clbState)
+      let els = appState ^. (socketEmulatorState . cachedState)
+      globals <- evalStateT (unwrapClbT E.getGlobals) cs
+      let res = Clb.validateTx globals els shelleyTx
+      case res of
+        Fail _ err ->
+          pure $
+            TxSubmission.SubmitFail
+              ( Consensus.HardForkApplyTxErrFromEra
+                  (Consensus.OneEraApplyTxErr (S (S (S (S (S (S (Z (WrapApplyTxErr err)))))))))
+              )
+        Success ls' _tx -> do
+          let ctx = E.CardanoEmulatorEraTx shelleyTx
+          liftIO $
+            modifyMVar_
+              state
+              ( pure
+                  . over
+                    socketEmulatorState
+                    -- FIXME: shall we handle datums here? Yes, we should.
+                    (addTxToPool ctx . (cachedState .~ ls'))
+              )
+          pure TxSubmission.SubmitSuccess
+  -- TODO: handle other cases?
   C.TxInMode era _ -> do
     putStrLn $ "Unsupported era: " <> show era
     pure $
@@ -728,31 +769,57 @@ submitTx state tx = case C.fromConsensusGenTx tx of
                 (S (S (S (S (S (Z (Consensus.LedgerEraInfo eraInfoConway)))))))
         )
 
--- -- | Applying a Byron thing to a Shelley ledger
--- exampleEraMismatchShelley :: Consensus.MismatchEraInfo (CardanoEras StandardCrypto)
--- exampleEraMismatchShelley =
---     Consensus.MismatchEraInfo $ Consensus.ML eraInfoByron
---       (S ( S (S (S (S (Z (Consensus.LedgerEraInfo eraInfoConway)))))))
-
 eraInfoConway :: Consensus.SingleEraInfo (ShelleyBlock (Praos StandardCrypto) StandardConway)
 eraInfoConway = Consensus.singleEraInfo (Proxy @(ShelleyBlock (Praos StandardCrypto) StandardConway))
 
 eraInfoBabbage :: Consensus.SingleEraInfo (ShelleyBlock (Praos StandardCrypto) StandardBabbage)
 eraInfoBabbage = Consensus.singleEraInfo (Proxy @(ShelleyBlock (Praos StandardCrypto) StandardBabbage))
 
-eraInfoShelley :: Consensus.SingleEraInfo (ShelleyBlock (TPraos StandardCrypto) StandardShelley)
-eraInfoShelley = Consensus.singleEraInfo (Proxy @(ShelleyBlock (TPraos StandardCrypto) StandardShelley))
+-- eraInfoShelley :: Consensus.SingleEraInfo (ShelleyBlock (TPraos StandardCrypto) StandardShelley)
+-- eraInfoShelley = Consensus.singleEraInfo (Proxy @(ShelleyBlock (TPraos StandardCrypto) StandardShelley))
 
 eraInfoByron :: Consensus.SingleEraInfo ByronBlock
 eraInfoByron = Consensus.singleEraInfo (Proxy @ByronBlock)
 
--- should be SubmitFail HardForkApplyTxErrWrongEra, but the Mismatch type is complicated
+-- This is called when we move a tx from mempool into a new block.
+-- There is no need to re-validate transactions by this stage
+-- since we have guarantees that the slot number is still the same
+-- as it was when a transaction entered the mempool.
+processSingleTx :: (Monad m, IsCardanoLedgerEra era) => C.Tx era -> ClbT era m (Maybe (E.OnChainTx era))
+-- processSingleTx tx = validateTx tx >>= commitTx
+processSingleTx _tx@(C.ShelleyTx _ stx) = do
+  -- state@ClbState {_knownDatums} <- get
+  -- let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody tx
+  -- put $ state {_knownDatums = M.union _knownDatums txDatums}
+  -- put $ state {_chainState = newState, _knownDatums = M.union _knownDatums txDatums}
+  pure $ Just $ E.OnChainTx $ L.unsafeMakeValidated stx
+
+-- commitTx :: (Monad m, IsCardanoLedgerEra era) => ValidationResult era -> ClbT era m (Maybe (OnChainTx era))
+-- commitTx (Success _newState vtx) = do
+--   state@ClbState {_knownDatums} <- get
+--   let apiTx = C.ShelleyTx shelleyBasedEra (L.extractTx $ getOnChainTx vtx)
+--   let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
+--   put $ state {_chainState = newState, _knownDatums = M.union _knownDatums txDatums}
+--   pure $ Just vtx
+-- commitTx (Fail _tx err) = do
+--   logError $
+--     "Transaction Failed: "
+--       <> show err
+--   -- TODO: Should we include transaction details ?
+--   -- <> " - Transaction Details: "
+--   -- <> show tx
+--   pure Nothing
+
+-- -----------------------------------------------------------------------------
+-- State query protocol, see Query.hs
+-- -----------------------------------------------------------------------------
 
 stateQueryServer ::
   (block ~ CardanoBlock StandardCrypto, HandleQuery era) =>
+  Trace IO EmulatorMsg ->
   MVar (AppState era) ->
   StateQuery.LocalStateQueryServer block (Point block) (Query block) IO ()
-stateQueryServer state = Query.LocalStateQueryServer {Query.runLocalStateQueryServer = pure idle}
+stateQueryServer trace state = Query.LocalStateQueryServer {Query.runLocalStateQueryServer = pure idle}
   where
     idle =
       Query.ServerStIdle
@@ -763,8 +830,32 @@ stateQueryServer state = Query.LocalStateQueryServer {Query.runLocalStateQuerySe
     ack =
       Query.ServerStAcquired
         { Query.recvMsgQuery = \q -> do
-            res <- handleQuery state q
+            res <- handleQuery trace state q
             pure $ Query.SendMsgResult res ack
         , Query.recvMsgReAcquire = acquiring
         , Query.recvMsgRelease = pure idle
         }
+
+-- -----------------------------------------------------------------------------
+-- Utility: chain pruning
+-- -----------------------------------------------------------------------------
+
+{- Create a thread that keeps the number of blocks in the original channel
+   to the maximum limit of K -}
+runPruneChainThread :: (MonadIO m) => Integer -> TChan (Block era) -> m ThreadId
+runPruneChainThread k original = do
+  localChannel <- liftIO $ atomically $ cloneTChan original
+  liftIO . forkIO $ go k localChannel
+  where
+    go :: (MonadIO m) => Integer -> TChan (Block era) -> m ()
+    go k' localChannel = do
+      -- Wait for data on the channel
+      _ <- liftIO $ atomically $ readTChan localChannel
+      {- When the counter reaches zero, there are K blocks in the
+                original channel and we start to remove the oldest stored
+                block by reading it. -}
+      if k' == 0
+        then do
+          liftIO $ atomically (readTChan original) >> go 0 localChannel
+        else do
+          go (k' - 1) localChannel

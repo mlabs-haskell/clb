@@ -38,7 +38,11 @@ import Clb.Params (
   defaultBabbageParams,
   defaultConwayParams,
  )
-import Clb.TimeSlot (SlotConfig (SlotConfig, scSlotLength, scSlotZeroTime), nominalDiffTimeToPOSIXTime, utcTimeToPOSIXTime)
+import Clb.TimeSlot (
+  SlotConfig (SlotConfig, scSlotLength, scSlotZeroTime),
+  nominalDiffTimeToPOSIXTime,
+  utcTimeToPOSIXTime,
+ )
 import Control.Lens.Getter ((^.))
 import PlutusLedgerApi.V3 (POSIXTime (getPOSIXTime))
 
@@ -74,8 +78,7 @@ defaultSlotConfig =
     }
 
 {- | Default Babbage era config. If we use this parameter
- then Babbage era TXs will be used for testing
- FIXME: remove rest of `Babbage` naming distinction (not applicable anymore)
+ then Babbage era TXs will be used for testing.
 -}
 defaultBabbageClbConfig :: ClbConfig C.BabbageEra
 defaultBabbageClbConfig = mkDefaultClbConfig defaultBabbageParams defaultBabbageTransitionConfig
@@ -135,7 +138,7 @@ paramsFromConfig tc =
           }
     , clbConfigProtocol = tc ^. T.tcInitialPParamsG
     , clbConfigNetworkId = C.fromShelleyNetwork (L.sgNetworkId sg) (C.NetworkMagic $ L.sgNetworkMagic sg)
-    , clbConfigCheckLimits = ErrorLimits -- FIXME: soft-code it
+    , clbConfigCheckLimits = ErrorLimits -- TODO: https://github.com/mlabs-haskell/clb/issues/50
     , clbConfigConfig = tc
     }
   where
