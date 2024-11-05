@@ -23,6 +23,7 @@ import Control.Concurrent (
   MVar,
   ThreadId,
   forkIO,
+  modifyMVar,
   modifyMVar_,
   newMVar,
   readMVar,
@@ -144,7 +145,6 @@ import Cardano.Node.Socket.Emulator.Types (
   nodeToClientVersion,
   nodeToClientVersionData,
   runClb,
-  runClbWithApp,
   setTip',
   socketEmulatorState,
   stateQueryCodec,
@@ -165,7 +165,7 @@ import Clb.ClbLedgerState qualified as E
 import Clb.Era (IsCardanoLedgerEra)
 import Clb.TimeSlot (Slot)
 import Control.Monad.Freer.Extras (logInfo)
-import Control.Monad.State (evalStateT, modify)
+import Control.Monad.State (StateT (runStateT), evalStateT, modify)
 import Data.Data (Proxy (..))
 import Ouroboros.Consensus.Byron.Ledger.Block (ByronBlock)
 import Ouroboros.Consensus.Protocol.Praos (Praos)
@@ -251,17 +251,12 @@ tryProduceBlock :: (MonadIO m) => ServerHandler -> m (Maybe (Block C.ConwayEra))
 tryProduceBlock ServerHandler {shCommandChannel} = do
   liftIO $ atomically $ writeTQueue (ccCommand shCommandChannel) TryProduceBlock
   -- Wait for the server to finish processing blocks.
-  mBlock <-
-    liftIO $
-      atomically $
-        readTQueue (ccResponse shCommandChannel) >>= \case
-          BlockAdded block -> do
-            pure block
-          _ -> retry
-  liftIO $ putStrLn $ case mBlock of
-    Just b -> "A new block has been produced:" <> show b
-    Nothing -> "There were no transactions in mempool, no block was produced."
-  pure mBlock
+  liftIO $
+    atomically $
+      readTQueue (ccResponse shCommandChannel) >>= \case
+        BlockAdded block -> do
+          pure block
+        _ -> retry
 
 modifySlot :: (MonadIO m) => (Slot -> Slot) -> ServerHandler -> m Slot
 modifySlot f ServerHandler {shCommandChannel} = do
@@ -291,45 +286,52 @@ handleCommand trace CommandChannel {ccCommand, ccResponse} mvAppState = do
         atomically $
           writeTQueue ccResponse (SlotChanged s)
       TryProduceBlock -> do
-        mbRet <- runClbWithApp mvAppState processBlock
+        mbRet <- processBlock trace mvAppState
         case mbRet of
-          (_, Nothing) -> do
+          Nothing -> do
             atomically $ writeTQueue ccResponse (BlockAdded Nothing)
-          (newAppState, Just block) -> do
-            let ch = newAppState ^. (socketEmulatorState . channel)
+          Just block -> do
+            ch <- getChannel mvAppState
             atomically $ do
               writeTChan ch block
               writeTQueue ccResponse (BlockAdded $ Just block)
 
-{- | Evaluates all Txs in the mem pool and adds valid ones to a new block.
- Invalid transaxtions are just get dumped.
- TODO: Then updates currentBlock @EmulatedLedgerState to latest Block
+{- | Evaluates all Txs in the mempool and adds valid ones to a new block.
+     Invalid transaxtions are just get dumped.
 -}
 processBlock ::
-  (Monad m, IsCardanoLedgerEra era) =>
-  AppState era ->
-  ClbT era m (AppState era, Maybe (Block era))
-processBlock appState = do
-  let poolTxs = appState ^. (socketEmulatorState . txPool)
-  case poolTxs of
-    [] -> do
-      E.logInfo $ LogEntry E.Info "Skipping block producing, txPool is empty."
-      return (appState, Nothing)
-    txs -> do
-      E.logInfo $ LogEntry E.Info "Producing a new block."
-      newBlock <- catMaybes <$> mapM (processSingleTx . E.getEmulatorEraTx) txs
-      E.logInfo $ LogEntry E.Debug $ "Block is: " <> show newBlock
-      E.logInfo $ LogEntry E.Debug "Updating chain state..."
-      modify $
-        over
-          E.chainState
-          (const $ appState ^. (socketEmulatorState . cachedState))
-      let newAppState =
-            appState
-              & over (socketEmulatorState . txPool) (const mempty)
-              & over (socketEmulatorState . chainNewestFirst) (newBlock :)
-              & flip setTip' newBlock
-      return (newAppState, Just newBlock)
+  Trace IO EmulatorMsg ->
+  MVar (AppState C.ConwayEra) ->
+  IO (Maybe (Block C.ConwayEra))
+processBlock trace mvAppState =
+  liftIO $ modifyMVar mvAppState $ \appState -> do
+    runLogEffects trace $ do
+      let poolTxs = appState ^. (socketEmulatorState . txPool)
+      case poolTxs of
+        [] -> do
+          logInfo @EmulatorMsg "Skipping block producing, txPool is empty."
+          return (appState, Nothing)
+        txs -> do
+          logInfo @EmulatorMsg "Producing a new block."
+          newBlock <- liftIO $ catMaybes <$> mapM (processSingleTx . E.getEmulatorEraTx) txs
+          logInfo @EmulatorMsg $ "Block is: " <> show newBlock
+          logInfo @EmulatorMsg "Updating chain state..."
+          let s = appState ^. (socketEmulatorState . clbState)
+          (_, s') <-
+            runStateT
+              ( modify $
+                  over
+                    E.chainState
+                    (const $ appState ^. (socketEmulatorState . cachedState))
+              )
+              s
+          let newAppState =
+                appState
+                  & over (socketEmulatorState . txPool) (const mempty)
+                  & over (socketEmulatorState . chainNewestFirst) (newBlock :)
+                  & flip setTip' newBlock
+                  & over (socketEmulatorState . clbState) (const s')
+          return (newAppState, Just newBlock)
 
 -- -----------------------------------------------------------------------------
 -- Protocol Loop
@@ -785,7 +787,7 @@ eraInfoByron = Consensus.singleEraInfo (Proxy @ByronBlock)
 -- There is no need to re-validate transactions by this stage
 -- since we have guarantees that the slot number is still the same
 -- as it was when a transaction entered the mempool.
-processSingleTx :: (Monad m, IsCardanoLedgerEra era) => C.Tx era -> ClbT era m (Maybe (E.OnChainTx era))
+processSingleTx :: (IsCardanoLedgerEra era) => C.Tx era -> IO (Maybe (E.OnChainTx era))
 -- processSingleTx tx = validateTx tx >>= commitTx
 processSingleTx _tx@(C.ShelleyTx _ stx) = do
   -- state@ClbState {_knownDatums} <- get

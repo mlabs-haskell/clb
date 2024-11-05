@@ -108,7 +108,6 @@ initialState params tc =
                 { lsUTxOState = L.smartUTxOState params mempty (L.Coin 0) (L.Coin 0) def (L.Coin 0)
                 , lsCertState = def {L.certPState = pState'}
                 }
-                -- , _currentBlock = []
           }
       pState' :: L.PState (CardanoLedgerEra era) =
         L.PState

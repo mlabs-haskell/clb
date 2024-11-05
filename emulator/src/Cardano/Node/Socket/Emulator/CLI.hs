@@ -50,17 +50,13 @@ buildConfig = do
 buildNodeServerConfig :: NodeServerRunOptions -> IO NodeServerConfig
 buildNodeServerConfig RunOptions {..} = do
   EmulatorConfiguration {..} <- decodeFileThrow nsoConfig
-  -- lcd <- getCurrentDirectory
-  -- putStrLn $ "Current directory: " <> lcd
-  let config =
-        defaultNodeServerConfig
-          { nscSocketPath = nsoSocketPath
-          , nscShelleyGenesisPath = Just ecShelleyGenesisFile
-          , nscAlonzoGenesisPath = Just ecAlonzoGenesisFile
-          , nscConwayGenesisPath = Just ecConwayGenesisFile
-          }
-  print config
-  pure config
+  pure $
+    defaultNodeServerConfig
+      { nscSocketPath = nsoSocketPath
+      , nscShelleyGenesisPath = Just ecShelleyGenesisFile
+      , nscAlonzoGenesisPath = Just ecAlonzoGenesisFile
+      , nscConwayGenesisPath = Just ecConwayGenesisFile
+      }
 
 -- | Data type representing the possible commands
 newtype NodeServerCommands
