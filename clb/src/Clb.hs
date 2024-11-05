@@ -70,6 +70,10 @@ module Clb (
 
   -- * Working with logs
   LogEntry (..),
+  mkDebug,
+  mkInfo,
+  mkWarn,
+  mkError,
   LogLevel (..),
   Log (Log),
   unLog,
@@ -248,6 +252,18 @@ data LogEntry = LogEntry
   }
   deriving stock (Show)
 
+mkDebug :: String -> LogEntry
+mkDebug = LogEntry Debug
+
+mkInfo :: String -> LogEntry
+mkInfo = LogEntry Info
+
+mkWarn :: String -> LogEntry
+mkWarn = LogEntry Warning
+
+mkError :: String -> LogEntry
+mkError = LogEntry Error
+
 data LogLevel = Debug | Info | Warning | Error
   deriving stock (Show)
 
@@ -406,7 +422,9 @@ logError msg = do
   logInfo $ LogEntry Error msg
   logFail $ GenericFail msg
 
--- | Add a non-error log enty.
+{- | Add a non-error log enty.
+FIXME: rename to logEntry
+-}
 logInfo :: (Monad m) => LogEntry -> ClbT era m ()
 logInfo le = do
   C.SlotNo slotNo <- getCurrentSlot

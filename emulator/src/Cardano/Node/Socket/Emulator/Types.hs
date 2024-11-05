@@ -313,16 +313,16 @@ runClb ::
 runClb trace mvAppState action = do
   runClbInIO' trace mvAppState action >>= either throwIO pure
 
-runClbWithApp ::
-  MVar (AppState C.ConwayEra) ->
-  (AppState C.ConwayEra -> ClbT C.ConwayEra IO (AppState C.ConwayEra, a)) ->
-  IO (AppState C.ConwayEra, a)
-runClbWithApp mvAppState action =
-  modifyMVar mvAppState $ \appState -> do
-    let s = appState ^. (socketEmulatorState . clbState)
-    ((newAppState, a), s') <- runStateT (unwrapClbT (action appState)) s
-    let newAppState' = newAppState & (socketEmulatorState . clbState) .~ s'
-    pure (newAppState', (newAppState', a))
+-- runClbWithApp ::
+--   MVar (AppState C.ConwayEra) ->
+--   (AppState C.ConwayEra -> ClbT C.ConwayEra IO (AppState C.ConwayEra, a)) ->
+--   IO (AppState C.ConwayEra, a)
+-- runClbWithApp mvAppState action =
+--   modifyMVar mvAppState $ \appState -> do
+--     let s = appState ^. (socketEmulatorState . clbState)
+--     ((newAppState, a), s') <- runStateT (unwrapClbT (action appState)) s
+--     let newAppState' = newAppState & (socketEmulatorState . clbState) .~ s'
+--     pure (newAppState', (newAppState', a))
 
 convClbLog :: (Slot, E.LogEntry) -> LogMessage String
 convClbLog (slot, entry) =
@@ -331,7 +331,7 @@ convClbLog (slot, entry) =
         E.Info -> Info
         E.Warning -> Warning
         E.Error -> Error
-   in LogMessage lvl $ "Slot  " <> show slot <> ": " <> E.leMsg entry
+   in LogMessage lvl $ show (pretty slot) <> ": " <> E.leMsg entry
 
 -- Extracts logs from Clb computation, and clears them up.
 extractLogs :: (Monad m) => ClbT era m EmulatorLogs
