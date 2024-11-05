@@ -5,6 +5,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
@@ -130,6 +131,7 @@ import Cardano.Ledger.Shelley.API qualified as L
 import Cardano.Node.Socket.Emulator.Query (HandleQuery (handleQuery))
 import Cardano.Node.Socket.Emulator.Types (
   AppState (..),
+  Block,
   BlockId (BlockId),
   EmulatorMsg,
   Tip,
@@ -138,7 +140,6 @@ import Cardano.Node.Socket.Emulator.Types (
   cachedState,
   chainNewestFirst,
   chainSyncCodec,
-  channel,
   clbState,
   getChannel,
   getTip,
@@ -152,18 +153,13 @@ import Cardano.Node.Socket.Emulator.Types (
   txPool,
   txSubmissionCodec,
  )
-import Clb (
-  Block,
-  ClbT,
-  LogEntry (..),
-  ValidationResult (..),
-  unwrapClbT,
-  validateTx,
- )
+import Clb (ValidationResult (..))
 import Clb qualified as E
-import Clb.ClbLedgerState qualified as E
+import Clb.EmulatedLedgerState qualified as E
 import Clb.Era (IsCardanoLedgerEra)
 import Clb.TimeSlot (Slot)
+import Clb.Tx (pattern CardanoEmulatorEraTx)
+import Clb.Tx qualified as E (getEmulatorEraTx)
 import Control.Monad.Freer.Extras (logInfo)
 import Control.Monad.State (StateT (runStateT), evalStateT, modify)
 import Data.Data (Proxy (..))
@@ -723,8 +719,8 @@ submitTx trace state tx = case C.fromConsensusGenTx tx of
       appState <- liftIO $ readMVar state
       let cs = appState ^. (socketEmulatorState . clbState)
       let els = appState ^. (socketEmulatorState . cachedState)
-      globals <- evalStateT (unwrapClbT E.getGlobals) cs
-      let res = Clb.validateTx globals els shelleyTx
+      globals <- evalStateT (E.unwrapClbT E.getGlobals) cs
+      let res = E.validateTx globals els shelleyTx
       case res of
         Fail _ err ->
           pure $
@@ -733,7 +729,7 @@ submitTx trace state tx = case C.fromConsensusGenTx tx of
                   (Consensus.OneEraApplyTxErr (S (S (S (S (S (S (Z (WrapApplyTxErr err)))))))))
               )
         Success ls' _tx -> do
-          let ctx = E.CardanoEmulatorEraTx shelleyTx
+          let ctx = CardanoEmulatorEraTx shelleyTx
           liftIO $
             modifyMVar_
               state

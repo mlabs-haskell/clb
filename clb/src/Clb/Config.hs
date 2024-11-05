@@ -1,5 +1,4 @@
 module Clb.Config (
-  -- Stat (..),
   ClbConfig (..),
   CheckLimits (..),
   defaultSlotConfig,

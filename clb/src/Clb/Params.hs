@@ -2,7 +2,16 @@ module Clb.Params where
 
 import Cardano.Api (AlonzoEra, BabbageEra, ConwayEra)
 import Cardano.Api.Ledger qualified as C
-import Cardano.Api.Shelley qualified as C (BabbageEra, CardanoEra (AlonzoEra), ConwayEra, NetworkMagic (NetworkMagic), ShelleyGenesis (sgNetworkMagic, sgProtocolParams, sgSystemStart), alonzoGenesisDefaults, conwayGenesisDefaults, shelleyGenesisDefaults)
+import Cardano.Api.Shelley qualified as C (
+  BabbageEra,
+  CardanoEra (AlonzoEra),
+  ConwayEra,
+  NetworkMagic (NetworkMagic),
+  ShelleyGenesis (sgNetworkMagic, sgProtocolParams, sgSystemStart),
+  alonzoGenesisDefaults,
+  conwayGenesisDefaults,
+  shelleyGenesisDefaults,
+ )
 import Cardano.Ledger.Alonzo.Core qualified as L (CoinPerWord (CoinPerWord))
 import Cardano.Ledger.Alonzo.PParams qualified as Alonzo
 import Cardano.Ledger.Alonzo.Scripts qualified as Alonzo
@@ -34,7 +43,7 @@ emulatorProtocolMajorVersion :: L.Version
 emulatorProtocolMajorVersion = L.natVersion @9
 
 {- | Some reasonable starting defaults for constructing a 'ShelleyGenesis'.
-TODO : Override the following fields:
+  TODO: Override the following fields:
     * 'sgGenDelegs' to have some initial nodes
     * 'sgInitialFunds' to have any money in the system
     * 'sgMaxLovelaceSupply' must be at least the sum of the 'sgInitialFunds'

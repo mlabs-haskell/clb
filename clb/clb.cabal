@@ -52,10 +52,9 @@ library
   import:          common-lang
   exposed-modules:
     Clb
-    Clb.ClbLedgerState
     Clb.Config
+    Clb.EmulatedLedgerState
     Clb.Era
-    Clb.MemPool
     Clb.Params
     Clb.TimeSlot
     Clb.Tx

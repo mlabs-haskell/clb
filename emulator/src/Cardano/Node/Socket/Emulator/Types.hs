@@ -18,24 +18,60 @@
 -- | This module exports data types for logging, events and configuration
 module Cardano.Node.Socket.Emulator.Types where
 
-import Cardano.BM.Data.Trace (Trace)
-
 import Cardano.Api (ConwayEra, lovelaceToValue)
+import Cardano.Api qualified as C
+import Cardano.Api.Address (AddressInEra)
+import Cardano.BM.Data.Trace (Trace)
+import Cardano.Binary qualified as CBOR
 import Cardano.Chain.Slotting (EpochSlots (..))
+import Cardano.Ledger.Api.Transition (EraTransition)
 import Cardano.Ledger.Block qualified as CL
+import Cardano.Ledger.Core qualified as Core
 import Cardano.Ledger.Era qualified as CL
-import Cardano.Ledger.Shelley.API (Coin (Coin), Nonce (NeutralNonce), extractTx, unsafeMakeValidated)
+import Cardano.Ledger.Shelley.API (
+  Coin (Coin),
+  Nonce (NeutralNonce),
+  extractTx,
+  unsafeMakeValidated,
+ )
 import Cardano.Ledger.Shelley.Genesis qualified as SG
+import Cardano.Ledger.Shelley.Transition qualified as T
+import Cardano.Protocol.TPraos.BHeader
+import Cardano.Protocol.TPraos.OCert (KESPeriod (..))
+import Clb (
+  CardanoTx,
+  ClbConfig (..),
+  ClbState,
+  ClbT,
+  EmulatedLedgerState,
+  OnChainTx (..),
+ )
+import Clb qualified as E
+import Clb.EmulatedLedgerState qualified as E (getSlot)
+import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra)
+import Clb.TimeSlot (Slot)
 import Codec.Serialise (DeserialiseFailure)
 import Codec.Serialise qualified as CBOR
 import Control.Concurrent (MVar, modifyMVar, modifyMVar_, readMVar)
 import Control.Concurrent.STM
+import Control.Exception (Exception)
+import Control.Exception.Base (throwIO)
 import Control.Lens (makeLenses, over, view, (&), (.~), (^.))
 import Control.Monad.Class.MonadST (MonadST)
+import Control.Monad.Freer (send)
+import Control.Monad.Freer.Extras (
+  LogLevel (..),
+  LogMessage (LogMessage),
+  LogMsg (LMessage),
+ )
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.State (gets, modify)
+import Control.Monad.State.Lazy (StateT (runStateT))
 import Crypto.Hash (SHA256, hash)
 import Data.Aeson (FromJSON, ToJSON)
+import Data.Base16.Types qualified as B16
 import Data.ByteArray qualified as BA
+import Data.ByteString.Base16 qualified as B16
 import Data.ByteString.Lazy qualified as BSL
 import Data.ByteString.Short qualified as BS
 import Data.Coerce (coerce)
@@ -80,52 +116,13 @@ import Ouroboros.Network.Protocol.ChainSync.Type qualified as ChainSync
 import Ouroboros.Network.Protocol.LocalStateQuery.Type qualified as StateQuery
 import Ouroboros.Network.Protocol.LocalTxSubmission.Type qualified as TxSubmission
 import Ouroboros.Network.Util.ShowProxy
+import Plutus.Monitoring.Util (runLogEffects)
 import Prettyprinter (Pretty, pretty, viaShow, (<+>))
-
--- import Prettyprinter.Extras (PrettyShow (PrettyShow))
-import Cardano.Binary qualified as CBOR
-
-import Cardano.Api.Address (AddressInEra)
-import Cardano.Protocol.TPraos.BHeader
-import Cardano.Protocol.TPraos.OCert (KESPeriod (..))
-import Clb (
-  Block,
-  ClbConfig (ClbConfig),
-  ClbState,
-  ClbT (unwrapClbT),
-  EmulatedLedgerState,
-  OnChainTx (..),
-  chainState,
-  checkErrors,
-  clbConfigConfig,
-  initClb,
-  unwrapClbT,
- )
-import Clb.ClbLedgerState (TxPool, getSlot)
 import Test.Cardano.Ledger.Common
 import Test.Cardano.Ledger.Shelley.Constants (defaultConstants)
 import Test.Cardano.Ledger.Shelley.Generator.Presets (coreNodeKeys)
 import Test.Cardano.Ledger.Shelley.Serialisation.EraIndepGenerators ()
 import Test.Cardano.Protocol.TPraos.Create (mkBlock, mkOCert)
-
-import Cardano.Api qualified as C
-import Cardano.Ledger.Api.Transition (EraTransition)
-import Cardano.Ledger.Core qualified as Core
-import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra)
-import Control.Exception (Exception)
-import Control.Monad.State.Lazy (StateT (runStateT))
-import Data.Base16.Types qualified as B16
-import Data.ByteString.Base16 qualified as B16
-
-import Cardano.Ledger.Shelley.Transition qualified as T
-import Clb qualified as E
-import Clb.TimeSlot (Slot)
-import Clb.Tx (Blockchain, CardanoTx)
-import Control.Exception.Base (throwIO)
-import Control.Monad.Freer (send)
-import Control.Monad.Freer.Extras (LogLevel (..), LogMessage (LogMessage), LogMsg (LMessage))
-import Control.Monad.State (gets, modify)
-import Plutus.Monitoring.Util (runLogEffects)
 
 {- | In addition to state handled by CLB emulator as a library ('ClbState')
 this data type introduces additional things that are involved when the
@@ -146,6 +143,19 @@ data SocketEmulatorState era = SocketEmulatorState
   , _tip :: Tip
   }
   deriving (Generic)
+
+{- | mempool is just a list of transactions, ordered by the time at which they
+arrived (the head is the latest)
+-}
+type TxPool era = [CardanoTx era]
+
+{- | A block on the blockchain. This is just a list of transactions
+following on from the chain so far.
+-}
+type Block era = [OnChainTx era]
+
+-- | A blockchain, which is just a list of blocks, starting with the newest.
+type Blockchain era = [Block era]
 
 type Tip = Ouroboros.Tip (CardanoBlock StandardCrypto)
 
@@ -213,7 +223,7 @@ initialChainState ::
   m (SocketEmulatorState era)
 initialChainState params@ClbConfig {clbConfigConfig} =
   fromEmulatorChainState $
-    initClb params _dummyTotalNotUsedNow perWallet (Just initialFunds)
+    E.initClb params _dummyTotalNotUsedNow perWallet (Just initialFunds)
   where
     _dummyTotalNotUsedNow = lovelaceToValue $ Coin 1_000_000_000_000
     perWallet = lovelaceToValue $ Coin 1_000_000_000
@@ -232,7 +242,7 @@ initialChainState params@ClbConfig {clbConfigConfig} =
           { _clbState = state
           , _chainNewestFirst = mempty
           , _txPool = mempty
-          , _cachedState = state ^. chainState
+          , _cachedState = state ^. E.chainState
           , _channel = ch
           , -- Is this correct? There is no way to produce a tip if there are no blocks.
             _tip = Ouroboros.TipGenesis
@@ -249,11 +259,11 @@ getTip mv = liftIO (readMVar mv) <&> view (socketEmulatorState . tip)
 setTip :: (MonadIO m, CBOR.ToCBOR (Core.Tx (CardanoLedgerEra era))) => MVar (AppState era) -> Block era -> m ()
 setTip mv block = liftIO $ modifyMVar_ mv $ \oldState -> do
   let slot =
-        getSlot $
+        E.getSlot $
           oldState
             ^. socketEmulatorState
               . clbState
-              . chainState
+              . E.chainState
   pure $
     oldState
       & socketEmulatorState . tip
@@ -263,11 +273,11 @@ setTip mv block = liftIO $ modifyMVar_ mv $ \oldState -> do
 setTip' :: (CBOR.ToCBOR (Core.Tx (CardanoLedgerEra era))) => AppState era -> Block era -> AppState era
 setTip' oldState block =
   let slot =
-        getSlot $
+        E.getSlot $
           oldState
             ^. socketEmulatorState
               . clbState
-              . chainState
+              . E.chainState
    in oldState
         & socketEmulatorState . tip
           .~ Ouroboros.Tip (fromInteger slot) (coerce $ blockId block) (fromInteger slot)
@@ -287,11 +297,11 @@ runClbInIO stateVar eff =
     let action = do
           ret <- eff
           logs <- extractLogs
-          mErr <- checkErrors
+          mErr <- E.checkErrors
           case mErr of
             Nothing -> pure (logs, Right ret)
             Just err -> pure (logs, Left err)
-    (a, s') <- runStateT (unwrapClbT action) s
+    (a, s') <- runStateT (E.unwrapClbT action) s
     pure (appState & (socketEmulatorState . clbState) .~ s', a)
 
 runClbInIO' ::

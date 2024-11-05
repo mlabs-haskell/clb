@@ -38,27 +38,27 @@ module Clb (
 
   -- * CLB internals (revise)
   ClbState (..),
+  EmulatedLedgerState (..),
   chainState,
   clbConfig,
   knownDatums,
   clbLog,
   clbFailures,
-  EmulatedLedgerState (..),
 
   -- * CLB Runner
-  initClb,
   runClb,
+  initClb,
 
   -- * Actions
   txOutRefAt,
   txOutRefAtPaymentCred,
 
   -- * Tx submission (Haskell API)
+  ValidationResult (..),
+  CardanoTx,
+  OnChainTx (..),
   submitTx,
   validateTx,
-  ValidationResult (..),
-  OnChainTx (..),
-  Block,
 
   -- * Querying
   getClbConfig,
@@ -81,12 +81,12 @@ module Clb (
   logInfo,
   logFail,
   logError,
-  dumpUtxoState,
 
   -- * Log utils
   checkErrors,
   getFails,
   ppLog,
+  dumpUtxoState,
 
   -- * Emulator configuration
   ClbConfig (..),
@@ -100,7 +100,6 @@ module Clb (
   intToCardanoSk,
   waitSlot,
   modifySlot,
-  -- applyTx,
   getStakePools,
   -- others
   scriptDataFromCardanoTxBody,
@@ -130,7 +129,9 @@ import Cardano.Ledger.Shelley.LedgerState qualified as L
 import Cardano.Ledger.Slot (SlotNo (..))
 import Cardano.Ledger.TxIn qualified as L
 import Cardano.Slotting.EpochInfo (EpochInfo)
-import Clb.ClbLedgerState (
+import Clb.Config (ClbConfig (..))
+import Clb.Config qualified as X (defaultBabbageClbConfig, defaultConwayClbConfig)
+import Clb.EmulatedLedgerState (
   EmulatedLedgerState (..),
   initialState,
   ledgerEnv,
@@ -139,13 +140,17 @@ import Clb.ClbLedgerState (
   setSlot,
   setUtxo,
  )
-import Clb.Config (ClbConfig (..))
-import Clb.Config qualified as X (defaultBabbageClbConfig, defaultConwayClbConfig)
 import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra, maryBasedEra)
 import Clb.Params (PParams, emulatorShelleyGenesisDefaults)
-import Clb.TimeSlot (Slot (..), SlotConfig (..), slotConfigToEpochInfo)
-import Clb.TimeSlot qualified as TimeSlot
-import Clb.Tx (Block, OnChainTx (..))
+import Clb.TimeSlot (
+  Slot (..),
+  SlotConfig (..),
+  fromSlot,
+  posixTimeToUTCTime,
+  slotConfigToEpochInfo,
+  toSlot,
+ )
+import Clb.Tx (CardanoTx, OnChainTx (..))
 import Control.Arrow (ArrowChoice (..))
 import Control.Lens (makeLenses, over, view, (&), (.~), (^.))
 import Control.Monad (when)
@@ -501,7 +506,7 @@ getGlobals = do
   pure $
     L.mkShelleyGlobals
       ( emulatorShelleyGenesisDefaults
-          { L.sgSystemStart = TimeSlot.posixTimeToUTCTime startTime
+          { L.sgSystemStart = posixTimeToUTCTime startTime
           }
       )
       epochInfo
@@ -669,9 +674,3 @@ modifySlot f = do
   newSlot <- f . toSlot <$> getCurrentSlot
   modify $ over chainState $ setSlot $ fromSlot newSlot
   return newSlot
-
-toSlot :: SlotNo -> Slot
-toSlot = Slot . fromIntegral . L.unSlotNo
-
-fromSlot :: Slot -> SlotNo
-fromSlot = fromIntegral . TimeSlot.getSlot

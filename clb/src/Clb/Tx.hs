@@ -1,8 +1,10 @@
+{-# LANGUAGE PatternSynonyms #-}
+
 module Clb.Tx (
   CardanoTx (..),
   OnChainTx (..),
-  Block,
-  Blockchain,
+  pattern CardanoEmulatorEraTx,
+  getEmulatorEraTx,
 ) where
 
 import Cardano.Api.Shelley qualified as C
@@ -21,6 +23,16 @@ data CardanoTx era where
 instance Show (CardanoTx era) where
   show = const "CardanoTx"
 
+getEmulatorEraTx :: CardanoTx era -> C.Tx era
+getEmulatorEraTx (CardanoTx tx _) = tx
+
+pattern CardanoEmulatorEraTx :: (C.IsShelleyBasedEra era) => C.Tx era -> CardanoTx era
+pattern CardanoEmulatorEraTx tx <- (getEmulatorEraTx -> tx)
+  where
+    CardanoEmulatorEraTx tx = CardanoTx tx C.shelleyBasedEra
+
+{-# COMPLETE CardanoEmulatorEraTx #-}
+
 {- | A validated Tx, that made it to the ledger state (might be mempool/blockchain).
 Might has IsValid = False in which case the collateral will be collected.
 -}
@@ -37,11 +49,3 @@ we only neew 'encode' part.
 instance (CBOR.ToCBOR (Core.Tx (CardanoLedgerEra era))) => Serialise (OnChainTx era) where
   encode = CBOR.toCBOR . L.extractTx . getOnChainTx
   decode = fail "Not allowed to use `decode` on `OnChainTx`"
-
-{- | A block on the blockchain. This is just a list of transactions
-following on from the chain so far.
--}
-type Block era = [OnChainTx era]
-
--- | A blockchain, which is just a list of blocks, starting with the newest.
-type Blockchain era = [Block era]
