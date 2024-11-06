@@ -2,7 +2,16 @@ module Clb.Params where
 
 import Cardano.Api (AlonzoEra, BabbageEra, ConwayEra)
 import Cardano.Api.Ledger qualified as C
-import Cardano.Api.Shelley qualified as C (BabbageEra, CardanoEra (AlonzoEra), ConwayEra, NetworkMagic (NetworkMagic), ShelleyGenesis (sgNetworkMagic, sgProtocolParams, sgSystemStart), alonzoGenesisDefaults, conwayGenesisDefaults, shelleyGenesisDefaults)
+import Cardano.Api.Shelley qualified as C (
+  BabbageEra,
+  CardanoEra (AlonzoEra),
+  ConwayEra,
+  NetworkMagic (NetworkMagic),
+  ShelleyGenesis (sgNetworkMagic, sgProtocolParams, sgSystemStart),
+  alonzoGenesisDefaults,
+  conwayGenesisDefaults,
+  shelleyGenesisDefaults,
+ )
 import Cardano.Ledger.Alonzo.Core qualified as L (CoinPerWord (CoinPerWord))
 import Cardano.Ledger.Alonzo.PParams qualified as Alonzo
 import Cardano.Ledger.Alonzo.Scripts qualified as Alonzo
@@ -34,7 +43,7 @@ emulatorProtocolMajorVersion :: L.Version
 emulatorProtocolMajorVersion = L.natVersion @9
 
 {- | Some reasonable starting defaults for constructing a 'ShelleyGenesis'.
-TODO : Override the following fields:
+  TODO: Override the following fields:
     * 'sgGenDelegs' to have some initial nodes
     * 'sgInitialFunds' to have any money in the system
     * 'sgMaxLovelaceSupply' must be at least the sum of the 'sgInitialFunds'
@@ -43,7 +52,7 @@ emulatorShelleyGenesisDefaults :: C.ShelleyGenesis C.StandardCrypto
 emulatorShelleyGenesisDefaults =
   C.shelleyGenesisDefaults
     { C.sgNetworkMagic = case testNetworkMagic of C.NetworkMagic nm -> nm
-    , C.sgSystemStart = posixTimeToUTCTime $ POSIXTime beginningOfTime
+    , C.sgSystemStart = posixTimeToUTCTime $ POSIXTime beginningOfTime -- usually wrong in emulator's setting
     , C.sgProtocolParams =
         C.sgProtocolParams C.shelleyGenesisDefaults
           & L.ppProtocolVersionL
@@ -188,7 +197,7 @@ defaultConwayParams =
               , ucppDRepActivity = L.EpochInterval 20
               , ucppCommitteeMinSize = 0
               , ucppCommitteeMaxTermLength = L.EpochInterval 73
-              , ucppPlutusV3CostModel = LT.testingCostModelV3 -- FIXME: This is temporary.
+              , ucppPlutusV3CostModel = LT.testingCostModelV3 -- TODO: This is temporary, update.
               }
             defaultBabbageParams
    in coerce $

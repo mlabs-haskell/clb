@@ -2,44 +2,41 @@ cabal-version: 3.8
 name:          socket-emulator
 version:       1.0.0
 
+flag force-recomp
+  description: Compile with -fforce-recomp and -Wunused-packages
+  default:     False
+
 common lang
   default-language:   GHC2021
   default-extensions:
     ImportQualifiedPost
     LambdaCase
 
-  -- DeriveFoldable
-  -- DeriveFunctor
-  -- DeriveGeneric
-  -- DeriveLift
-  -- DeriveTraversable
-  -- ExplicitForAll
-  -- FlexibleContexts
-  -- GeneralizedNewtypeDeriving
-  -- NamedFieldPuns
-  -- ScopedTypeVariables
-  -- StandaloneDeriving
-
   ghc-options:
-    -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns
-    -Wnoncanonical-monad-instances -Wredundant-constraints -fplugin-opt
+    -Wall -Widentities -Wincomplete-record-updates
+    -Wincomplete-uni-patterns -Wnoncanonical-monad-instances
+    -Wredundant-constraints -fplugin-opt
     PlutusTx.Plugin:target-version=1.1.0 -fplugin-opt
     PlutusTx.Plugin:defer-errors
 
-  -- -Wall
   -- The limitation of plutus-tx-plugin
   if (impl(ghc <9.6) || impl(ghc >=9.7))
     buildable: False
+
+  if flag(force-recomp)
+    ghc-options: -fforce-recomp -Wunused-packages
 
 library
   import:          lang
   hs-source-dirs:  src
   exposed-modules:
     Cardano.Node.Socket.Emulator
-    Cardano.Node.Socket.Emulator.Mock
+    Cardano.Node.Socket.Emulator.CLI
+    Cardano.Node.Socket.Emulator.Configuration
     Cardano.Node.Socket.Emulator.Params
     Cardano.Node.Socket.Emulator.Query
     Cardano.Node.Socket.Emulator.Server
+    Cardano.Node.Socket.Emulator.SlotCoordinator
     Cardano.Node.Socket.Emulator.Types
     Plutus.Monitoring.Util
 
@@ -54,16 +51,13 @@ library
     , clb
     , freer-extras  ^>=1.3.0
 
-  -- , cardano-node-emulator  ^>=1.3.0
-  -- , plutus-ledger          ^>=1.3.0
-  -- , plutus-script-utils    ^>=1.3.0
-
   --------------------------
   -- Other IOG dependencies
   --------------------------
   build-depends:
     , cardano-api:{cardano-api, internal}
     , cardano-binary
+    , cardano-data
     , cardano-ledger-api
     , cardano-ledger-byron
     , cardano-ledger-core:{cardano-ledger-core, testlib}
@@ -72,10 +66,10 @@ library
     , cardano-protocol-tpraos:{cardano-protocol-tpraos, testlib}
     , cardano-slotting
     , cryptonite
-    , exceptions
     , io-classes
     , iohk-monitoring
     , memory
+    , optparse-applicative-fork
     , ouroboros-consensus
     , ouroboros-consensus-cardano
     , ouroboros-consensus-diffusion
@@ -86,11 +80,9 @@ library
     , ouroboros-network-protocols
     , plutus-ledger-api
     , serialise
-    , small-steps
     , strict-sop-core
     , typed-protocols
 
-  -- , cardano-api:{cardano-api, internal}                         ^>=8.46
   ------------------------
   -- Non-IOG dependencies
   ------------------------
@@ -113,15 +105,14 @@ library
     , text
     , time
     , time-units
+    , yaml
 
 executable cardano-node-socket-emulator
   import:           lang
   main-is:          Main.hs
   hs-source-dirs:   app
   default-language: Haskell2010
-  build-depends:    socket-emulator ^>=1.0.0
-  build-depends:    iohk-monitoring
   build-depends:
-    , base           >=4.9 && <5
-    , data-default
-    , prettyprinter
+  build-depends:
+    , base             >=4.9    && <5
+    , socket-emulator  ^>=1.0.0

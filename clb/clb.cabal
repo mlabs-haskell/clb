@@ -8,12 +8,12 @@ maintainer:      ilia@mlabs.city
 author:
   , Ilia Rodionov
   , George Flerovsky
-  , Gregory Gerasev
   , Rajdeep Maity
+  , Gregory Gerasev
 
 synopsis:
-  The Cardano emulator that just works AKA Cardano Ledger Backend (CLB),
-  pronounced /klʌb/.
+  The Cardano emulator that "just works" AKA Cardano Ledger Backend (CLB),
+  pronounced /klʌb/.  A new gen of PSM.
 
 tested-with:     GHC ==9.6.3
 
@@ -52,18 +52,16 @@ library
   import:          common-lang
   exposed-modules:
     Clb
-    Clb.ClbLedgerState
+    Clb.Config
+    Clb.EmulatedLedgerState
     Clb.Era
-    Clb.MockConfig
     Clb.Params
     Clb.TimeSlot
     Clb.Tx
 
   other-modules:
   build-depends:
-    , base               ^>=4.18.0
-    , base16-bytestring
-    , bytestring
+    , base           ^>=4.18.0
     , containers
     , data-default
     , lens
@@ -72,23 +70,21 @@ library
     , serialise
     , text
     , time
-    , transformers
 
   build-depends:
     , cardano-api:{cardano-api, internal}                 >=8.38.0.0
     , cardano-binary
     , cardano-crypto-class
+    , cardano-data
     , cardano-ledger-alonzo
     , cardano-ledger-api
     , cardano-ledger-babbage
-    , cardano-ledger-binary
     , cardano-ledger-conway
     , cardano-ledger-core:{cardano-ledger-core, testlib}
     , cardano-ledger-mary
     , cardano-ledger-shelley
     , cardano-slotting
-    , ouroboros-consensus-cardano
-    , plutus-core
+    , cardano-strict-containers
     , plutus-ledger-api
     , plutus-tx
     , pretty-show
