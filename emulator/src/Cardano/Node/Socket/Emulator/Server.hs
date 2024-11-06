@@ -699,6 +699,7 @@ hoistStNext (SendMsgRollBackward header tip' nextState') =
    it is much simpler. -}
 
 txSubmissionServer ::
+  forall block.
   (block ~ CardanoBlock StandardCrypto) =>
   Trace IO EmulatorMsg ->
   MVar (AppState C.ConwayEra) ->
