@@ -1,32 +1,77 @@
 module Clb.Params where
 
-import Cardano.Api.Shelley qualified as C (BabbageEra, ConwayEra, shelleyGenesisDefaults)
-import Cardano.Ledger.Alonzo qualified as L (AlonzoEra)
+import Cardano.Api (AlonzoEra, BabbageEra, ConwayEra)
+import Cardano.Api.Ledger qualified as C
+import Cardano.Api.Shelley qualified as C (
+  BabbageEra,
+  CardanoEra (AlonzoEra),
+  ConwayEra,
+  NetworkMagic (NetworkMagic),
+  ShelleyGenesis (sgNetworkMagic, sgProtocolParams, sgSystemStart),
+  alonzoGenesisDefaults,
+  conwayGenesisDefaults,
+  shelleyGenesisDefaults,
+ )
 import Cardano.Ledger.Alonzo.Core qualified as L (CoinPerWord (CoinPerWord))
 import Cardano.Ledger.Alonzo.PParams qualified as Alonzo
 import Cardano.Ledger.Alonzo.Scripts qualified as Alonzo
-import Cardano.Ledger.Babbage qualified as L (BabbageEra)
+import Cardano.Ledger.Api.Era qualified as L
+import Cardano.Ledger.Api.Transition qualified as L
 import Cardano.Ledger.Babbage.PParams qualified as Babbage
 import Cardano.Ledger.BaseTypes qualified as L
 import Cardano.Ledger.Coin qualified as L
 import Cardano.Ledger.Conway.PParams qualified as Conway
 import Cardano.Ledger.Core qualified as L
-import Cardano.Ledger.Crypto qualified as L (StandardCrypto)
 import Cardano.Ledger.Plutus.Language qualified as Plutus
-import Cardano.Ledger.Shelley.Genesis qualified as L (ShelleyGenesis)
-import Clb.Era (CardanoLedgerEra)
+import Clb.Era (CardanoLedgerEra, DefaultEmulatorEra)
+import Clb.TimeSlot (beginningOfTime, posixTimeToUTCTime)
+import Control.Lens ((.~))
 import Data.Coerce (coerce)
 import Data.Either (fromRight)
+import Data.Function ((&))
 import Data.Functor.Identity (Identity)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromJust)
+import PlutusLedgerApi.V1 (POSIXTime (POSIXTime))
 import Test.Cardano.Ledger.Plutus qualified as LT (testingCostModelV3)
 
 type PParams era = L.PParams (CardanoLedgerEra era)
 
+-- Shelley
+
+emulatorProtocolMajorVersion :: L.Version
+emulatorProtocolMajorVersion = L.natVersion @9
+
+{- | Some reasonable starting defaults for constructing a 'ShelleyGenesis'.
+  TODO: Override the following fields:
+    * 'sgGenDelegs' to have some initial nodes
+    * 'sgInitialFunds' to have any money in the system
+    * 'sgMaxLovelaceSupply' must be at least the sum of the 'sgInitialFunds'
+-}
+emulatorShelleyGenesisDefaults :: C.ShelleyGenesis C.StandardCrypto
+emulatorShelleyGenesisDefaults =
+  C.shelleyGenesisDefaults
+    { C.sgNetworkMagic = case testNetworkMagic of C.NetworkMagic nm -> nm
+    , C.sgSystemStart = posixTimeToUTCTime $ POSIXTime beginningOfTime -- usually wrong in emulator's setting
+    , C.sgProtocolParams =
+        C.sgProtocolParams C.shelleyGenesisDefaults
+          & L.ppProtocolVersionL
+            .~ L.ProtVer emulatorProtocolMajorVersion 0
+          & L.ppMinFeeBL
+            .~ L.Coin 155_381
+          & L.ppMinFeeAL
+            .~ L.Coin 44
+          & L.ppKeyDepositL
+            .~ L.Coin 2_000_000
+    }
+  where
+    testNetworkMagic :: C.NetworkMagic
+    testNetworkMagic = C.NetworkMagic 1097911063
+
 -- Alonzo
 
-defaultAlonzoParams' :: L.PParams (L.AlonzoEra L.StandardCrypto)
+-- defaultAlonzoParams' :: L.PParams (L.AlonzoEra L.StandardCrypto)
+defaultAlonzoParams' :: PParams AlonzoEra
 defaultAlonzoParams' =
   let
     app :: Alonzo.AlonzoPParams Identity (L.AlonzoEra L.StandardCrypto) =
@@ -63,10 +108,20 @@ defaultAlonzoParams' =
    in
     coerce app
 
+{- | Some reasonable starting defaults for constructing a 'AlonzoGenesis'.
+Based on https://github.com/IntersectMBO/cardano-node/blob/master/cardano-testnet/src/Testnet/Defaults.hs
+The era determines Plutus V2 cost model parameters:
+* Conway: 185
+* <= Babbage: 175
+-}
+emulatorAlonzoGenesisDefaults :: C.AlonzoGenesis
+emulatorAlonzoGenesisDefaults = C.alonzoGenesisDefaults C.AlonzoEra
+
 rational :: (L.BoundedRational r) => Rational -> r
 rational = fromJust . L.boundRational
 
-defaultBabbageParams' :: L.PParams (L.BabbageEra L.StandardCrypto)
+-- defaultBabbageParams' :: L.PParams (L.BabbageEra L.StandardCrypto)
+defaultBabbageParams' :: PParams BabbageEra
 defaultBabbageParams' = L.upgradePParams () defaultAlonzoParams'
 
 defaultCostModels :: Alonzo.CostModels
@@ -93,7 +148,7 @@ defaultCostModels =
 -- Babbage
 
 -- | Default Babbage V2 era parameters
-defaultBabbageParams :: L.PParams (CardanoLedgerEra C.BabbageEra)
+defaultBabbageParams :: PParams BabbageEra
 defaultBabbageParams =
   let old = coerce defaultBabbageParams'
    in coerce $
@@ -105,7 +160,7 @@ defaultBabbageParams =
 -- Conway
 
 -- | Default Babbage V2 era parameters
-defaultConwayParams :: L.PParams (CardanoLedgerEra C.ConwayEra)
+defaultConwayParams :: PParams ConwayEra
 defaultConwayParams =
   let old =
         coerce $
@@ -142,7 +197,7 @@ defaultConwayParams =
               , ucppDRepActivity = L.EpochInterval 20
               , ucppCommitteeMinSize = 0
               , ucppCommitteeMaxTermLength = L.EpochInterval 73
-              , ucppPlutusV3CostModel = LT.testingCostModelV3 -- FIXME: This is temporary.
+              , ucppPlutusV3CostModel = LT.testingCostModelV3 -- TODO: This is temporary, update.
               }
             defaultBabbageParams
    in coerce $
@@ -151,9 +206,15 @@ defaultConwayParams =
               L.ProtVer {pvMajor = L.eraProtVerHigh @(CardanoLedgerEra C.ConwayEra), pvMinor = 0}
           }
 
-genesisDefaultsFromParams :: L.ShelleyGenesis L.StandardCrypto
-genesisDefaultsFromParams = C.shelleyGenesisDefaults -- FIXME:
+emulatorConwayGenesisDefaults :: C.ConwayGenesis C.StandardCrypto
+emulatorConwayGenesisDefaults = C.conwayGenesisDefaults
 
--- | A sensible default 'EpochSize' value for the emulator
-emulatorEpochSize :: L.EpochSize
-emulatorEpochSize = L.EpochSize 432000
+-- Transition Config
+type TransitionConfig era = L.TransitionConfig (CardanoLedgerEra era)
+
+defaultTransitionConfig :: TransitionConfig DefaultEmulatorEra
+defaultTransitionConfig =
+  L.mkLatestTransitionConfig
+    emulatorShelleyGenesisDefaults
+    emulatorAlonzoGenesisDefaults
+    emulatorConwayGenesisDefaults

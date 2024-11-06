@@ -1,12 +1,27 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
 
-module Clb.Era (IsCardanoLedgerEra, IsCardanoLedgerEra', CardanoLedgerEra, IsMaryBasedEra (maryBasedEra)) where
+module Clb.Era (
+  -- EmulatorEra,
+  IsCardanoLedgerEra,
+  IsCardanoLedgerEra',
+  CardanoLedgerEra,
+  IsMaryBasedEra (maryBasedEra),
+  DefaultEmulatorEra,
+) where
 
-import Cardano.Api.Eras
-import Cardano.Api.Shelley
+import Cardano.Api.Eras (CardanoLedgerEra)
+import Cardano.Api.Shelley (
+  AlonzoEra,
+  BabbageEra,
+  ConwayEra,
+  IsMaryBasedEra (..),
+  IsShelleyBasedEra,
+  MaryEra,
+  ShelleyLedgerEra,
+ )
 import Cardano.Ledger.Api qualified as L
-import Cardano.Ledger.Shelley.API
+import Cardano.Ledger.Shelley.API (ApplyTx)
 import Data.Default (Default)
 
 {- | Helper class for constraining the 'CardanoLedgerEra' closed type family.
@@ -37,3 +52,5 @@ instance IsCardanoLedgerEra' BabbageEra (L.BabbageEra L.StandardCrypto)
 instance IsCardanoLedgerEra' ConwayEra (L.ConwayEra L.StandardCrypto)
 
 -- NOTE: Add more eras here as hardforks happen.
+
+type DefaultEmulatorEra = ConwayEra

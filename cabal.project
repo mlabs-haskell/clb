@@ -16,13 +16,14 @@ index-state:
   , hackage.haskell.org 2024-08-27T16:28:01Z
   , cardano-haskell-packages 2024-07-24T14:16:32Z
 
-packages: .
+packages:
+  clb
+  emulator
 
--- TODO: Default value should be @direct@ in upcoming 3.10 version of cabal, omit this line then.
-test-show-details: direct
+tests: True
 
-package cardano-crypto-praos
-  flags: -external-libsodium-vrf
+-- Always write GHC env files, because they are needed for ghci.
+write-ghc-environment-files: always
 
 -- Using RDRAND instead of /dev/urandom as an entropy source for key
 -- generation is dubious. Set the flag so we use /dev/urandom by default.
