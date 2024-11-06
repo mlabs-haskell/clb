@@ -61,9 +61,7 @@ library
 
   other-modules:
   build-depends:
-    , base               ^>=4.18.0
-    , base16-bytestring
-    , bytestring
+    , base           ^>=4.18.0
     , containers
     , data-default
     , lens
@@ -72,7 +70,6 @@ library
     , serialise
     , text
     , time
-    , transformers
 
   build-depends:
     , cardano-api:{cardano-api, internal}                 >=8.38.0.0
@@ -82,14 +79,12 @@ library
     , cardano-ledger-alonzo
     , cardano-ledger-api
     , cardano-ledger-babbage
-    , cardano-ledger-binary
     , cardano-ledger-conway
     , cardano-ledger-core:{cardano-ledger-core, testlib}
     , cardano-ledger-mary
     , cardano-ledger-shelley
     , cardano-slotting
-    , ouroboros-consensus-cardano
-    , plutus-core
+    , cardano-strict-containers
     , plutus-ledger-api
     , plutus-tx
     , pretty-show

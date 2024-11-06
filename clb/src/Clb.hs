@@ -67,6 +67,11 @@ module Clb (
   currentUtxoState,
   getEpochInfo,
   getGlobals,
+  getStakePools,
+
+  -- * Working with time/slotss
+  waitSlot,
+  modifySlot,
 
   -- * Working with logs
   LogEntry (..),
@@ -98,11 +103,9 @@ module Clb (
   -- * key utils
   intToKeyPair,
   intToCardanoSk,
-  waitSlot,
-  modifySlot,
-  getStakePools,
-  -- others
-  scriptDataFromCardanoTxBody,
+  -- tx utility functions
+  txWitnessDatums,
+  txInlineDatums,
 )
 where
 
@@ -171,6 +174,7 @@ import Data.Function (on)
 import Data.List
 import Data.Map qualified as M
 
+import Data.Maybe (mapMaybe)
 import Data.Sequence (Seq (..))
 import Data.Sequence qualified as Seq
 import Data.Set (Set)
@@ -529,7 +533,8 @@ submitTx apiTx@(C.ShelleyTx _ tx) = do
   globals <- getGlobals
   case applyTx ValidateAll globals state tx of
     Right (newState, vtx) -> do
-      let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
+      let txBody = C.getTxBody apiTx
+      let txDatums = txWitnessDatums txBody <> txInlineDatums txBody
       modify $
         over chainState (const $ nextSlot newState)
           . over knownDatums (`M.union` txDatums)
@@ -548,26 +553,39 @@ validateTx globals els (C.ShelleyTx _ tx) =
     Right (newState, vtx) -> Success newState vtx
     Left err -> Fail tx err
 
-{- | Given a 'C.TxBody from a 'C.Tx era', return the datums and redeemers along
-with their hashes.
--}
-scriptDataFromCardanoTxBody ::
-  C.TxBody era ->
-  -- -> (Map P.DatumHash P.Datum, PV1.Redeemers)
-  M.Map PV1.DatumHash PV1.Datum
-scriptDataFromCardanoTxBody (C.ShelleyTxBody _ _ _ C.TxBodyNoScriptData _ _) = mempty
-scriptDataFromCardanoTxBody
-  (C.ShelleyTxBody _ _ _ (C.TxBodyScriptData _ (L.TxDats' dats) _) _ _) =
-    let datums =
-          M.fromList
-            ( (\d -> (datumHash d, d))
-                . PV1.Datum
-                . fromCardanoScriptData
-                . C.getScriptData
-                . C.fromAlonzoData
-                <$> M.elems dats
-            )
-     in datums
+-- | Returns all inline datums from transaction outputs (along with their hashes).
+txInlineDatums :: forall era. C.TxBody era -> M.Map PV1.DatumHash PV1.Datum
+txInlineDatums txb =
+  let C.TxBodyContent {txOuts} = C.getTxBodyContent txb
+      inlineDatums = flip mapMaybe txOuts $
+        \(C.TxOut _ _ d _) -> case d of
+          C.TxOutDatumInTx _ sd -> Just sd
+          C.TxOutDatumInline _ sd -> Just sd
+          _ -> Nothing
+      datums =
+        M.fromList
+          ( (\d -> (datumHash d, d))
+              . PV1.Datum
+              . fromCardanoScriptData
+              . C.getScriptData
+              <$> inlineDatums
+          )
+   in datums
+
+-- | Returns wintess datums along with their hashes.
+txWitnessDatums :: C.TxBody era -> M.Map PV1.DatumHash PV1.Datum
+txWitnessDatums (C.ShelleyTxBody _ _ _ C.TxBodyNoScriptData _ _) = mempty
+txWitnessDatums (C.ShelleyTxBody _ _ _ (C.TxBodyScriptData _ (L.TxDats' dats) _) _ _) =
+  let datums =
+        M.fromList
+          ( (\d -> (datumHash d, d))
+              . PV1.Datum
+              . fromCardanoScriptData
+              . C.getScriptData
+              . C.fromAlonzoData
+              <$> M.elems dats
+          )
+   in datums
 
 fromCardanoScriptData :: C.ScriptData -> PV1.BuiltinData
 fromCardanoScriptData = PV1.dataToBuiltinData . C.toPlutusData

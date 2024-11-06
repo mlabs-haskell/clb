@@ -87,9 +87,9 @@ handleQueryConwayEra ::
 handleQueryConwayEra trace state q =
   runLogEffects trace $ do
     case q of
-      query@(BlockQuery (QueryIfCurrentConway q)) -> do
+      query@(BlockQuery (QueryIfCurrentConway qicc)) -> do
         logInfo $ "Query was received (1): " ++ show query
-        res <- liftIO $ runClbInIO' trace state $ queryIfCurrentConway q
+        res <- liftIO $ runClbInIO' trace state $ queryIfCurrentConway qicc
         either (printError . show) (pure . Right) res
       query@(BlockQuery (QueryHardFork GetInterpreter)) -> do
         logInfo $ "Query was received (2): " ++ show query

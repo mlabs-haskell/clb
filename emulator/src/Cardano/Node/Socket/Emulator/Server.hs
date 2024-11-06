@@ -57,19 +57,62 @@ import Control.Tracer (nullTracer)
 import Data.ByteString.Lazy qualified as BSL
 import Data.ByteString.Lazy qualified as LBS
 
+import Cardano.Api qualified as C
+import Cardano.Api.InMode qualified as C
+import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Data.Trace (Trace)
+import Cardano.Ledger.Shelley.API qualified as L
+import Cardano.Node.Socket.Emulator.Query (HandleQuery (handleQuery))
+import Cardano.Node.Socket.Emulator.Types (
+  AppState (..),
+  Block,
+  BlockId (BlockId),
+  EmulatorMsg,
+  Tip,
+  addTxToPool,
+  blockId,
+  cachedState,
+  chainNewestFirst,
+  chainSyncCodec,
+  clbState,
+  getChannel,
+  getTip,
+  nodeToClientVersion,
+  nodeToClientVersionData,
+  runClb,
+  setTip',
+  socketEmulatorState,
+  stateQueryCodec,
+  toCardanoBlock,
+  txPool,
+  txSubmissionCodec,
+ )
 import Cardano.Slotting.Slot (SlotNo (..), WithOrigin (..))
+import Clb (ValidationResult (..))
+import Clb qualified as E
+import Clb.EmulatedLedgerState qualified as E
+import Clb.Era (IsCardanoLedgerEra)
+import Clb.TimeSlot (Slot)
+import Clb.Tx (pattern CardanoEmulatorEraTx)
+import Clb.Tx qualified as E (getEmulatorEraTx)
+import Control.Monad.Freer.Extras (logInfo)
+import Control.Monad.State (StateT (runStateT), evalStateT, modify)
 import Data.Coerce (coerce)
+import Data.Data (Proxy (..))
 import Data.List (intersect)
+import Data.Map qualified as M
 import Data.Maybe (catMaybes, listToMaybe)
 import Data.SOP.Strict (NS (S, Z))
 import Data.Void (Void)
+import Ouroboros.Consensus.Byron.Ledger.Block (ByronBlock)
 import Ouroboros.Consensus.Cardano.Block (CardanoBlock, StandardBabbage, StandardConway)
 import Ouroboros.Consensus.HardFork.Combinator qualified as Consensus
 import Ouroboros.Consensus.Ledger.Query (Query (..))
 import Ouroboros.Consensus.Ledger.SupportsMempool (ApplyTxErr)
+import Ouroboros.Consensus.Protocol.Praos (Praos)
 import Ouroboros.Consensus.Shelley.Eras (StandardCrypto)
 import Ouroboros.Consensus.Shelley.Ledger qualified as Shelley
+import Ouroboros.Consensus.Shelley.Ledger.Block (ShelleyBlock)
 import Ouroboros.Consensus.TypeFamilyWrappers (WrapApplyTxErr (WrapApplyTxErr))
 import Ouroboros.Network.Block (Point (..), pointSlot)
 import Ouroboros.Network.Block qualified as O
@@ -123,50 +166,8 @@ import Ouroboros.Network.Socket (
   nullNetworkServerTracers,
   withServerNode,
  )
-
-import Cardano.Api qualified as C
-import Cardano.Api.InMode qualified as C
-import Cardano.Api.Shelley qualified as C
-import Cardano.Ledger.Shelley.API qualified as L
-import Cardano.Node.Socket.Emulator.Query (HandleQuery (handleQuery))
-import Cardano.Node.Socket.Emulator.Types (
-  AppState (..),
-  Block,
-  BlockId (BlockId),
-  EmulatorMsg,
-  Tip,
-  addTxToPool,
-  blockId,
-  cachedState,
-  chainNewestFirst,
-  chainSyncCodec,
-  clbState,
-  getChannel,
-  getTip,
-  nodeToClientVersion,
-  nodeToClientVersionData,
-  runClb,
-  setTip',
-  socketEmulatorState,
-  stateQueryCodec,
-  toCardanoBlock,
-  txPool,
-  txSubmissionCodec,
- )
-import Clb (ValidationResult (..))
-import Clb qualified as E
-import Clb.EmulatedLedgerState qualified as E
-import Clb.Era (IsCardanoLedgerEra)
-import Clb.TimeSlot (Slot)
-import Clb.Tx (pattern CardanoEmulatorEraTx)
-import Clb.Tx qualified as E (getEmulatorEraTx)
-import Control.Monad.Freer.Extras (logInfo)
-import Control.Monad.State (StateT (runStateT), evalStateT, modify)
-import Data.Data (Proxy (..))
-import Ouroboros.Consensus.Byron.Ledger.Block (ByronBlock)
-import Ouroboros.Consensus.Protocol.Praos (Praos)
-import Ouroboros.Consensus.Shelley.Ledger.Block (ShelleyBlock)
 import Plutus.Monitoring.Util (runLogEffects)
+import PlutusLedgerApi.V1 qualified as PV1
 
 -- -----------------------------------------------------------------------------
 -- Server API
@@ -309,16 +310,19 @@ processBlock trace mvAppState =
           return (appState, Nothing)
         txs -> do
           logInfo @EmulatorMsg "Producing a new block."
-          newBlock <- liftIO $ catMaybes <$> mapM (processSingleTx . E.getEmulatorEraTx) txs
+          (newBlock, blockDatums) <-
+            liftIO $
+              foldl (\(b, ml) (t, mr) -> (t : b, ml `M.union` mr)) ([], mempty)
+                . catMaybes
+                <$> mapM (processSingleTx . E.getEmulatorEraTx) txs
           logInfo @EmulatorMsg $ "Block is: " <> show newBlock
           logInfo @EmulatorMsg "Updating chain state..."
           let s = appState ^. (socketEmulatorState . clbState)
           (_, s') <-
             runStateT
               ( modify $
-                  over
-                    E.chainState
-                    (const $ appState ^. (socketEmulatorState . cachedState))
+                  over E.chainState (const $ appState ^. (socketEmulatorState . cachedState))
+                    . over E.knownDatums (`M.union` blockDatums)
               )
               s
           let newAppState =
@@ -511,7 +515,6 @@ findIntersect ::
 findIntersect clientPoints = do
   mvState <- ask
   appState <- liftIO $ readMVar mvState
-  localChannel <- cloneChainFrom 0
   let blocks =
         appState
           ^. socketEmulatorState
@@ -736,11 +739,10 @@ submitTx trace state tx = case C.fromConsensusGenTx tx of
               ( pure
                   . over
                     socketEmulatorState
-                    -- FIXME: shall we handle datums here? Yes, we should.
                     (addTxToPool ctx . (cachedState .~ ls'))
               )
           pure TxSubmission.SubmitSuccess
-  -- TODO: handle other cases?
+  -- TODO: handle other possible cases?
   C.TxInMode era _ -> do
     putStrLn $ "Unsupported era: " <> show era
     pure $
@@ -773,40 +775,22 @@ eraInfoConway = Consensus.singleEraInfo (Proxy @(ShelleyBlock (Praos StandardCry
 eraInfoBabbage :: Consensus.SingleEraInfo (ShelleyBlock (Praos StandardCrypto) StandardBabbage)
 eraInfoBabbage = Consensus.singleEraInfo (Proxy @(ShelleyBlock (Praos StandardCrypto) StandardBabbage))
 
--- eraInfoShelley :: Consensus.SingleEraInfo (ShelleyBlock (TPraos StandardCrypto) StandardShelley)
--- eraInfoShelley = Consensus.singleEraInfo (Proxy @(ShelleyBlock (TPraos StandardCrypto) StandardShelley))
-
 eraInfoByron :: Consensus.SingleEraInfo ByronBlock
 eraInfoByron = Consensus.singleEraInfo (Proxy @ByronBlock)
 
 -- This is called when we move a tx from mempool into a new block.
--- There is no need to re-validate transactions by this stage
--- since we have guarantees that the slot number is still the same
--- as it was when a transaction entered the mempool.
-processSingleTx :: (IsCardanoLedgerEra era) => C.Tx era -> IO (Maybe (E.OnChainTx era))
--- processSingleTx tx = validateTx tx >>= commitTx
-processSingleTx _tx@(C.ShelleyTx _ stx) = do
-  -- state@ClbState {_knownDatums} <- get
-  -- let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody tx
-  -- put $ state {_knownDatums = M.union _knownDatums txDatums}
-  -- put $ state {_chainState = newState, _knownDatums = M.union _knownDatums txDatums}
-  pure $ Just $ E.OnChainTx $ L.unsafeMakeValidated stx
-
--- commitTx :: (Monad m, IsCardanoLedgerEra era) => ValidationResult era -> ClbT era m (Maybe (OnChainTx era))
--- commitTx (Success _newState vtx) = do
---   state@ClbState {_knownDatums} <- get
---   let apiTx = C.ShelleyTx shelleyBasedEra (L.extractTx $ getOnChainTx vtx)
---   let txDatums = scriptDataFromCardanoTxBody $ C.getTxBody apiTx
---   put $ state {_chainState = newState, _knownDatums = M.union _knownDatums txDatums}
---   pure $ Just vtx
--- commitTx (Fail _tx err) = do
---   logError $
---     "Transaction Failed: "
---       <> show err
---   -- TODO: Should we include transaction details ?
---   -- <> " - Transaction Details: "
---   -- <> show tx
---   pure Nothing
+processSingleTx ::
+  (IsCardanoLedgerEra era) =>
+  C.Tx era ->
+  IO (Maybe (E.OnChainTx era, M.Map PV1.DatumHash PV1.Datum))
+processSingleTx tx@(C.ShelleyTx _ stx) = do
+  -- let apiTx = C.ShelleyTx shelleyBasedEra (L.extractTx $ getOnChainTx vtx)
+  let txBody = C.getTxBody tx
+  let txDatums = E.txWitnessDatums txBody `M.union` E.txInlineDatums txBody
+  -- There is no real need to re-validate transactions by this stage
+  -- since we have guarantees that the slot number is still the same
+  -- as it was when a transaction entered the mempool.
+  pure $ Just (E.OnChainTx $ L.unsafeMakeValidated stx, txDatums)
 
 -- -----------------------------------------------------------------------------
 -- State query protocol, see Query.hs
