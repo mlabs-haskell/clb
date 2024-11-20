@@ -57,6 +57,7 @@ import Ouroboros.Consensus.HardFork.History.Summary (
   Bound (..),
   EraSummary (..),
   Summary (..),
+  neverForksSummary,
  )
 import Ouroboros.Consensus.Ledger.Query (Query (..))
 import Ouroboros.Consensus.Protocol.Praos (Praos)
@@ -176,7 +177,7 @@ emulatorEraHistory params = C.EraHistory (Ouroboros.mkInterpreter $ Ouroboros.su
     lastS =
       Ouroboros.nonEmptyHead $
         Ouroboros.getSummary $
-          skipSummary lastEndBound emulatorEpochSize (slotLength params) emulatorGenesisWindow
+          neverForksSummary emulatorEpochSize (slotLength params) emulatorGenesisWindow
     list = Ouroboros.Exactly $ K one :* K one :* K one :* K one :* K one :* K one :* K lastS :* Nil
 
 -- | 'Summary' for a ledger that never forks
@@ -195,14 +196,6 @@ skipSummary endBound epochSize slotLen genesisWindow =
               , eraGenesisWin = genesisWindow
               }
         }
-
-lastEndBound :: Bound
-lastEndBound =
-  Bound
-    { boundTime = RelativeTime 50
-    , boundSlot = SlotNo 1
-    , boundEpoch = EpochNo 500
-    }
 
 emulatorGenesisWindow :: GenesisWindow
 emulatorGenesisWindow = GenesisWindow window
