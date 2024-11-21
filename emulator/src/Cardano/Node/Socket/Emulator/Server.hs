@@ -88,11 +88,11 @@ import Cardano.Node.Socket.Emulator.Types (
   txSubmissionCodec,
  )
 import Cardano.Slotting.Slot (SlotNo (..), WithOrigin (..))
-import Clb (ValidationResult (..))
+import Clb (ValidationResult (..), chainState)
 import Clb qualified as E
 import Clb.EmulatedLedgerState qualified as E
 import Clb.Era (IsCardanoLedgerEra)
-import Clb.TimeSlot (Slot)
+import Clb.TimeSlot (Slot, fromSlot)
 import Clb.Tx (pattern CardanoEmulatorEraTx)
 import Clb.Tx qualified as E (getEmulatorEraTx)
 import Control.Monad.Freer.Extras (logInfo)
@@ -280,6 +280,14 @@ handleCommand trace CommandChannel {ccCommand, ccResponse} mvAppState = do
     atomically (readTQueue ccCommand) >>= \case
       ModifySlot f -> do
         s <- runClb trace mvAppState (E.modifySlot f)
+        -- FIXME: This is unfortunate we have to look after two ledger envs.
+        liftIO $ modifyMVar mvAppState $ \appState -> do
+          let newState =
+                over
+                  (socketEmulatorState . cachedState)
+                  (E.setSlot $ fromSlot s)
+                  appState
+          pure (newState, ())
         atomically $
           writeTQueue ccResponse (SlotChanged s)
       TryProduceBlock -> do
@@ -318,10 +326,13 @@ processBlock trace mvAppState =
           logInfo @EmulatorMsg $ "Block is: " <> show newBlock
           logInfo @EmulatorMsg "Updating chain state..."
           let s = appState ^. (socketEmulatorState . clbState)
+          let cachedState' = appState ^. (socketEmulatorState . cachedState)
+          let currentSlot =
+                E.getSlot (appState ^. socketEmulatorState . clbState . chainState)
           (_, s') <-
             runStateT
               ( modify $
-                  over E.chainState (const $ appState ^. (socketEmulatorState . cachedState))
+                  over E.chainState (const (E.setSlot currentSlot cachedState'))
                     . over E.knownDatums (`M.union` blockDatums)
               )
               s
@@ -489,8 +500,7 @@ nextState ::
         (m (ServerStNext block (Point block) Tip m ()))
     )
 nextState localChannel@(LocalChannel channel') = do
-  chainState <- ask
-  tip' <- getTip chainState
+  tip' <- getTip =<< ask
   (liftIO . atomically $ tryReadTChan channel') >>= \case
     Nothing -> do
       Right . pure <$> do

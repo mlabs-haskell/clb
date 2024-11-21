@@ -18,13 +18,14 @@ import Cardano.Node.Socket.Emulator.Types (
   AppState (..),
   EmulatorMsg,
   clbState,
+  getChainPointTime,
   getTip,
   runClbInIO',
   socketEmulatorState,
  )
 import Cardano.Slotting.EpochInfo (epochInfoEpoch)
 import Cardano.Slotting.Slot (WithOrigin (..))
-import Cardano.Slotting.Time (RelativeTime (RelativeTime), SlotLength, mkSlotLength)
+import Cardano.Slotting.Time (SlotLength, mkSlotLength)
 import Clb (ClbT, chainState, clbConfig, getClbConfig, getCurrentSlot, getGlobals, getStakePools, getUtxosAt)
 import Clb qualified as E
 import Clb.Config (ClbConfig (..))
@@ -47,7 +48,7 @@ import Data.SOP.Counting qualified as Ouroboros
 import Data.SOP.NonEmpty qualified as Ouroboros
 import Data.SOP.Strict (NP (Nil, (:*)), NS (S, Z))
 import Data.Set qualified as Set
-import Ouroboros.Consensus.Block (EpochNo (EpochNo), EpochSize, GenesisWindow (..), SlotNo (SlotNo))
+import Ouroboros.Consensus.Block (EpochSize, GenesisWindow (..))
 import Ouroboros.Consensus.Cardano.Block (BlockQuery (..), CardanoBlock)
 import Ouroboros.Consensus.HardFork.Combinator (QueryHardFork (..))
 import Ouroboros.Consensus.HardFork.Combinator qualified as Consensus
@@ -123,7 +124,11 @@ handleQueryConwayEra trace state q =
             let ret = At curBlockNo
             logInfo $ "Tip is: " <> show ret
             pure ret
-      GetChainPoint -> printError "Unimplemented GetChainPoint was received"
+      query@GetChainPoint -> do
+        logInfo $ "Query was received (5): " ++ show query
+        ret <- getChainPointTime state
+        logInfo $ "Chain point time is: " <> show ret
+        pure ret
 
 queryIfCurrentConway ::
   (block ~ Shelley.ShelleyBlock (Praos StandardCrypto) (ConwayEra StandardCrypto)) =>
