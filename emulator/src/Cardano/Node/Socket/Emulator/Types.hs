@@ -9,6 +9,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
@@ -45,6 +46,7 @@ import Clb (
   ClbT,
   EmulatedLedgerState,
   OnChainTx (..),
+  chainState,
  )
 import Clb qualified as E
 import Clb.EmulatedLedgerState qualified as E (getSlot)
@@ -80,6 +82,7 @@ import Data.Foldable (toList, traverse_)
 import Data.Functor ((<&>))
 import Data.ListMap qualified as LM
 import Data.Map qualified as Map
+import Data.Maybe (listToMaybe)
 import Data.Text qualified as Text
 import Data.Time.Clock (UTCTime)
 import Data.Time.Format.ISO8601 qualified as F
@@ -106,7 +109,11 @@ import Ouroboros.Consensus.Node.NetworkProtocolVersion (
 import Ouroboros.Consensus.Protocol.Praos.Header qualified as Praos
 import Ouroboros.Consensus.Shelley.Eras (StandardCrypto)
 import Ouroboros.Consensus.Shelley.Ledger qualified as Shelley
-import Ouroboros.Network.Block (Point)
+import Ouroboros.Network.Block (
+  Point,
+  pattern BlockPoint,
+  pattern GenesisPoint,
+ )
 import Ouroboros.Network.Block qualified as Ouroboros
 import Ouroboros.Network.NodeToClient (
   NodeToClientVersion (..),
@@ -254,6 +261,22 @@ getChannel mv = liftIO (readMVar mv) <&> view (socketEmulatorState . channel)
 -- Get the current tip.
 getTip :: (MonadIO m) => MVar (AppState era) -> m Tip
 getTip mv = liftIO (readMVar mv) <&> view (socketEmulatorState . tip)
+
+-- Get so-called "chain point" time
+getChainPointTime ::
+  ( MonadIO m
+  , block ~ CardanoBlock StandardCrypto
+  , CBOR.ToCBOR (Core.Tx (CardanoLedgerEra era))
+  ) =>
+  MVar (AppState era) ->
+  m (Point block)
+getChainPointTime mv = do
+  st <- liftIO (readMVar mv)
+  case listToMaybe $ st ^. socketEmulatorState . chainNewestFirst of
+    Just newest -> do
+      let slot = E.getSlot $ st ^. socketEmulatorState . clbState . chainState
+      pure $ BlockPoint slot (coerce $ blockId newest)
+    Nothing -> pure GenesisPoint
 
 -- Set the new tip
 setTip :: (MonadIO m, CBOR.ToCBOR (Core.Tx (CardanoLedgerEra era))) => MVar (AppState era) -> Block era -> m ()
