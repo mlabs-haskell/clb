@@ -6,25 +6,25 @@ _Ilia Rodionov, ilia@mlabs.city_
 ## Overview
 
 Milestone five was all about making CLB accessible from non-Haskell environments.
-Being writen in Haskell, CLB can be used as a lightweight library to run  Cardano
+Written in Haskell, CLB can be used as a lightweight library to run the Cardano
 ledger. This is how we used CLB in the previous milestones with Atlas.
 
 But this is not always a way to go. Many environments can't make use of
-a library as it is. At MLabs we have two such project, CTL written in PureScript
-and Tx-village written in Rust. We chose the former since is way more mature.
+a library as it is. At MLabs, we have two such projects, CTL written in PureScript
+and Tx-village written in Rust. We chose the former since it is way more mature.
 
-The idea was to wrap CLB emulator into a standalone process that implements some
+The idea was to wrap the CLB emulator into a standalone process that implements some
 Ouroboros mini-protocols and can mimic cardano-node. CTL uses cardano-testnet from
 cardano-node repository to spin up a private network to run tests. So we made the
 socket emulator compatible with cardano-testnet by supporting all CLI parameters
-and just replaced a real nodes with emulated ones. The rest of the stack (Ogmios
-and Kupo) are still in place - no chanhes are required.
+and just replaced real nodes with emulated ones. The rest of the stack (Ogmios
+and Kupo) are still in place - no changes are required.
 
-This setting has an important distinctions from a regular cardano-testnet with
+This setting has an important distinction from a regular cardano-testnet with
 cardano-node - there is no network and consensus overhead. Which might be good
-or bad depending on features required. It is quicker and  lighter, so if your
-tests don't rely on mentioned things, you can safely use CLB to get some speed
-gain in your tests.
+or bad depending on the features required. But it is quicker and  lighter, so 
+if one's tests don't rely on the mentioned things, you can safely use CLB to 
+get some speed gain in your tests.
 
 To showcase the use of CLB with CTL, a bet-ref example from Atlas (particularly
 its Aiken-based version) was ported into CTL testnet test-suite.
@@ -45,7 +45,7 @@ Outputs of the milestone can be found:
 
 * Traces of the ported bet-ref run with CTL can be found
 [here](https://github.com/mlabs-haskell/clb/tree/master/docs/reports/ms5/bet-ref-ctl.out).
-They witness that CLB node emulator is capable to mimic Cardano node
+They witness that the CLB node emulator is capable of mimicking the Cardano node
 behavior for transaction submission and state querying
 and that CTL can run a test-suite against the CLB node emulator.
 
