@@ -44,12 +44,12 @@ Outputs of the milestone can be found:
 ## Acceptance Criteria and Evidence
 
 * Traces of the ported bet-ref run with CTL can be found
-[here](TODO:).
+[here](https://github.com/mlabs-haskell/clb/tree/master/docs/reports/ms5/bet-ref-ctl.out).
 They witness that CLB node emulator is capable to mimic Cardano node
 behavior for transaction submission and state querying
-and that CTL can run a test-suite against CLB node emulator.
+and that CTL can run a test-suite against the CLB node emulator.
 
 * Updated CTL's documentation that covers the use of CLB with CTL can be found
-in the PR [here](TODO:)
+in the PR [here](https://github.com/Plutonomicon/cardano-transaction-lib/pull/1655/files#diff-807b1fd747bf984d301c342513212276a2462b41f08f0852e544bc0bd0e8262b).
 
 * The milestone report - this document.
