@@ -155,7 +155,7 @@ import Clb.TimeSlot (
  )
 import Clb.Tx (CardanoTx, OnChainTx (..))
 import Control.Arrow (ArrowChoice (..))
-import Control.Lens (makeLenses, over, view, (&), (.~), (^.))
+import Control.Lens (makeLenses, over, (&), (.~), (^.))
 import Control.Monad (when)
 import Control.Monad.Identity (Identity)
 import Control.Monad.Reader (runReader)
@@ -503,18 +503,12 @@ getEpochInfo =
 
 getGlobals :: (Monad m, IsCardanoLedgerEra era) => ClbT era m Globals
 getGlobals = do
-  pparams <- gets (clbConfigProtocol . _clbConfig)
   startTime <- gets (scSlotZeroTime . clbConfigSlotConfig . _clbConfig)
-  let majorVer = L.pvMajor $ view L.ppProtocolVersionL pparams
-  epochInfo <- getEpochInfo
-  pure $
-    L.mkShelleyGlobals
+  L.mkShelleyGlobals
       ( emulatorShelleyGenesisDefaults
           { L.sgSystemStart = posixTimeToUTCTime startTime
           }
-      )
-      epochInfo
-      majorVer
+      ) <$> getEpochInfo
 
 {- | The main tx submission mechanism (for "as a library mode").
 Takes a transaction, validates it against the latest blockchain state.

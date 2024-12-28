@@ -72,7 +72,7 @@ library
     , time
 
   build-depends:
-    , cardano-api:{cardano-api, internal}                 >=8.38.0.0
+    , cardano-api:{cardano-api, internal}                 ^>=10.1
     , cardano-binary
     , cardano-crypto-class
     , cardano-data
@@ -98,7 +98,7 @@ executable smoke-test
   main-is:          smoke-test.hs
   build-depends:
     , base
-    , cardano-api:{cardano-api, internal}
+    , cardano-api:{cardano-api, internal} ^>=10.1
     , cardano-ledger-core
     , clb
     , prettyprinter
