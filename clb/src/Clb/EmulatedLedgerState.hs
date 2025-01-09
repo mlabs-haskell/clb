@@ -59,6 +59,7 @@ initialState params tc =
                 , L.ledgerIx = minBound
                 , L.ledgerPp = params
                 , L.ledgerAccount = L.AccountState (L.Coin 0) (L.Coin 0)
+                , L.ledgerMempool = False
                 }
           , _ledgerState =
               L.LedgerState
