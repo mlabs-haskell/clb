@@ -40,14 +40,9 @@ Historically when Cardano entered Alonzo era
 and the introduction of Plutus language blazed the trail
 to building dApps on Cardano
 there existed no usable emulator.
-The original emulator from IOG
-(a part of [`plutus-apps`](https://github.com/IntersectMBO/plutus-apps))
+The emulator from IOG's _Plutus Application Framework_ [^1]
 didn't play well and tended to fall behind
 the cadence of major Cardano releases.
-
-TODO: footer: Now the whole _Plutus Application Framework_ is officially archived,
-but the emulator was budded off as a
-[standalone project](https://github.com/IntersectMBO/cardano-node-emulator).
 
 That way, without a working emulator, developes were left for their own devices,
 and various solutions started to proliferate to fill the gap.
@@ -143,13 +138,42 @@ In this section we present the case of **CEM Script** project
 which is a good example of how validators on Cardano could be tested
 and how CLB comes handy in doing that.
 
-dApps on Cardano consist of validators also known as smart-contracts, and every
-validator can be thought of as a state machine of a specific form [^1].
-The rules that constrain the way how transitions between states should ne performed.
-CEM Script (check out MLabs' blog for a post designated to it) allows defining
-such a state machine for a Cardano script that is particularly interesting in
-terms of testing possibilities it cracks open. Let's consider an example of
-such a definition to get an idea what it looks like.
+## CEM Machines
+
+dApps on Cardano consist of validators also known as smart-contracts, and a
+validator can be thought of as a state machine of a specific form [^2]
+called _Constraint Emitting Machines_. A valid transition in a CEM corresponds
+to a single valid transaction on the chain (though one transaction can span over
+several scripts). The name comes from the way transitions are defined over
+state and the input:
+
+```haskell
+transition :: State → Input → Maybe (State, TxConstraints)
+```
+To ease the digestion of the idea pretend that `State` is a datum holding the state
+and the `Input` is a redeemer providing the transition siganal. CEM emitts a set of
+`TxConstraints` along with the target state.
+
+Having a definition of such a state machine we can derive different parts of an
+application including:
+* On-chain validator that ensures that we are transitioning to a valid
+target state via a transaction that satisfies the emitted constraints.
+* Off-chain code that can build the transactions.
+* Indexing gadgets to filter out related transactions and extract
+transitions happened on-chain.
+
+Now, how can we check that the definition of a state machine is consistent
+and on-chain part is in sync with off-chain? And what does it mean for a
+state machine definition to be consistent in first place? Turns out that
+CEM machines are very prolific in terms of testing possibilities they crack open.
+
+But let's take a short break and dive into how the DSL for defining CEM
+machines is organized and familiarize ourselves with an example definition
+for simple acutioning dApp.
+
+## DSL for defining CEM Machines
+
+## Auctioning dApp
 
 First we define **states**, specifying the data that should be known in some
 states.
@@ -180,10 +204,9 @@ data SimpleAuctionTransition
   | Buyout
 ```
 
+## Mutation-based property testing
 
-a stt , and their state is stored on the blockchain.
-
-
+Link to Hydra article
 
 IIIRC state machine does two things:
 
@@ -195,8 +218,9 @@ So first one is covered by mutation testing and second state-machine testing.
 As mutation testing ultimately finds only CEM Script internal problems one can disable it with doMutationTesting field.
 
 
+# Unified testing with Atlas
 
-# Unified testing with Atlas: betting application
+## Betting dApp
 
 The idea of reusing the off-cahin code led us to
 implementing [**unified testing**](https://atlas-app.io/getting-started/testing#overview-of-unified-testing-in-atlas) feature in Atlas.
@@ -237,13 +261,13 @@ cfg <- coreConfigIO "atlas-config.json"
 Now, with access to providers I can run in GYTxGameMonad code (such as my contracts) using the eval' utility above.
 I usually alias eval = eval' providers in my REPL
 
-# Emulating cardano-node: betting app on CTL
+# Emulating cardano-node: betting dApp on CTL
 
 when the emulator mimics a real `cardano-node`
 by maintaining an IPC socket
 that supports a subset of Ouroboros mini-protocols.
 
-# Links
+# Useful Links
 
 * [CLB repository]() on GitHub
 * [CLB docs web-site]()
@@ -251,7 +275,7 @@ that supports a subset of Ouroboros mini-protocols.
 * [Atlas docs web-site]()
 * [CTL]()
 * [PSM repository]() on GitHub (archived)
-* [The extended UTxO model] (https://iohk.io/en/research/library/papers/the-extended-utxo-model/)
+* [The extended UTxO model] ()
 * [Mutation-based TDD](https://abailly.github.io/posts/mutation-testing.html)
 
 TODO: link article in the documenatation
@@ -260,6 +284,13 @@ TODO: update Changelog
 
 TODO: add badges to README
 
-[^1]: As "The Extended UTXO Model" mentions validators can be modeled as silghtly alternated [Mealy machines](https://en.wikipedia.org/wiki/Mealy_machine)
+[^1]: Now the whole [_Plutus Application Framework_](https://github.com/IntersectMBO/plutus-apps)
+is officially archived, but the emulator budded off as a
+[standalone project](https://github.com/IntersectMBO/cardano-node-emulator).
+
+[^2]: As ["The Extended UTXO Model"](https://iohk.io/en/research/library/papers/the-extended-utxo-model/)
+paper explains, validators can be modeled as silghtly alternated
+[Mealy machines](https://en.wikipedia.org/wiki/Mealy_machine)
+
 
 Tags: blockchain | cardano | testing
