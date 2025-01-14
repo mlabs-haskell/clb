@@ -274,7 +274,7 @@ Here we can naturally observe `DSLPattern` being used as the first argument and
 4. `Error` and `Noop` come in very handy together with `If` and `MatchBySpine`
 (see later).
 
-``haskell`
+```haskell
 | If
     -- | Condition
     (DSLPattern resolved script Bool)
@@ -469,7 +469,7 @@ In contrast, the last transition `Buyout` opens up more tricks:
       )
   , output
       (userUtxo buyoutBid.bidder)
-      (cMinLovelace @<> ctxParams.lot)
+      auctionValue
   , output
       (userUtxo ctxParams.seller)
       (cMinLovelace @<> cMkAdaOnlyValue buyoutBid.bidAmount)
@@ -481,102 +481,238 @@ In contrast, the last transition `Buyout` opens up more tricks:
 Here we can see that two outputs go to bidder and seller with the `lot` and and
 `bidAmount` correspondingly. From on-chain perspective it's not important where
 exactly `bidAmount` comes from - probably someone else can pay their money on
-bahalf of bidder. At the same time we have to give some intructions to off-chain
-machinery how to build the transaction. By using `offchainOnly` helper
+bahalf of the bidder.
+At the same time we have to give some intructions to off-chain
+machinery how to build this transaction. By using `offchainOnly` helper
 (which is defined as `offchainOnly c = If IsOnChain Noop c`) we can delimit
-constraints that are supposed to be used only when running transaction building.
+constraints that are supposed to be used only when running transaction building
+making them invisible for the on-chain code compiler.
 
 ## Back to testing: two steps
 
+In the next two sections we are moving back to the testing,
+starting with reagulr model-based aproach
+and then augmenting it with mutations.
+
 ### Step one: model-based testing
 
-How can we get assurance that the definition we came up with is sound
-in terms of bugs it can have which would potentially prevent liveness or
-lead to crashes?
+How can we get assurance that the definition of the state machine we came up with
+is sound in terms of bugs which would potentially prevent liveness or lead to crashes?
 
 Probably, by far the greatest merit of CEM-based approach to developing dApps
-we've just seen is the fact that it can easily be turned
+we've just seen is the fact that its parts can easily be turned
 into an "ideal world" model for the application.
-Indeed, having the list of possible transitions we can
-easily generate arbitrary sequnces of them, and then effectively shrink
-them down to a small subset of ones that "makes sense".
+Indeed, having a list of possible transitions we can easily generate
+arbitrary sequnces of them,
+and then effectively shrink them down to a realtively small set of
+those that "make sense".
+With a big enough number of meaningful scenarious at hand, we can execute
+them against the model and the real application
+and check that the both can handle them
+and even that the both do it the same way[^ TODO: this is not tre case for now].
+This approch is widely known as __model-based testing__.
+
+Let's first focus on the question of how we can discern meaningful
+sequences of transitions from a whole bunch of random ones we generate.
 To do that we need a decision function that can check whether a particular
 transition is sound being provided with the current state of execution
 and the definition of CEM machine.
-With a big enough number of meaningful scenarious at hand, we can execute
-them against the model and the real application simultaneously
-to check that the both can handle them and that the both do that in the same way.
-This approch is widely known as __model-based testing__.
-But what is that __real applicaton__ we just mentioned?
-In the real world, it is an application deployed on Cardano mainnet or testnet,
-but it is utterly ineffective even in terms of traditional happy-path testing.
-Private testnets are also cumbersome and slow.
-And it becomes literally infeasible when one needs to run thousands of scenarious.
-like in our case. Here CLB comes into play.
-But let's get back to the decision function and other bits we need.
-
-
-
-
-
-sequence should be verified by running  makes sense by replaying it and trying by checking whether corresponding constraints
-can be interpreted.
+In [quckcheck-dynamic](TODO:) library it's known as
+`precondition` method of `StateModel` type-class
+that takes the current state, the action in question and tells
+whether it's a meningful one over the state provided:
 
 ```haskell
-data CEMAction script = MkCEMAction (Params script) (Transition script)
+precondition ::
+  (CEMScriptArbitrary script) =>
+  ScriptState script ->
+  Action (ScriptState script) a ->
+  Bool
 ```
 
+Turns out we can implement it in a very straightforward manner by reusing
+some functions from off-chain machinery of **CEM Script**. Let's see how it works.
+The entry point called `resolveTx` takes a specification for a prospective transaction and
+tries to build a transaction ready for submitting. You can think of `TxSpec`
+data type of a list of __transitions__ and `ResolvedTx` as final recipe
+to build a `cardano-api` transaction:
+
+```haskell
+resolveTx ::
+  forall m.
+  (MonadQueryUtxo m) =>
+  TxSpec ->
+  m (Either TxResolutionError ResolvedTx)
+```
+
+This function works in four steps:
+
+1. Compiling constraints. For every transition within the specification
+(as we mentioned a transaction can operate over several scripts
+simultaneously and independently, and each script runs its own transition):
+  * Finds the definition of the transition, including the list of constraints
+as `[TxContraints (resolved :: False)]`.
+  * Obtains the current on-chain state of the machine and checks whether it satisfies
+relevant constraints, i.e. constraints of form `input ownUtxo` that specifies
+the own input of the script.
+  * Tries to compile constraints, turning them from
+`[TxConstraint (resolved :: False)]` to `[TxConstraint (resolved :: True)]`.
+2. Concatenates and deduplicates constraints into one list.
+3. Translates each `TxConstraint` on the list into a building block of a future
+transaction called `Resolution`, querying blockchain state in some cases.
+4. Finally, use the list of `Resolution` to build the `ResolvedTx`.
+
+Whereas both steps (1) and (3) may fail, exactly step (1) contains the logic
+we are interested in. It ensures that the constraints can be translated in a
+meaningful way which is exactly the criterion of the transition's viability.
+So if can provide step (1) with the current state we will be able to know
+whether a particular transition could be valid. That way we can
+boil down the whole ideal world model to the machine state (plus some additions)
+which is captured by `ScriptState script` data type[^TODO: link to StateMachine.hs].
+Step (1) is implemented as `compileActionConstraints` function, so we can write
+`precondition` method additionally checking that the tar:
+
+```haskell
+precondition
+  (ScriptState {dappParams, state, finished})
+  (ScriptTransition transition) =
+    let
+      cemAction = MkCEMAction (params dappParams) transition
+      compiled = compileActionConstraints state cemAction
+      in isRight compiled
+```
+
+The rest of the `StateModel` instance is pretty straightforward to implement.
+Now that we have the model, what is that __real applicaton__ we mentioned?
+In the real world, it is an application deployed on Cardano mainnet or testnet,
+but it is utterly ineffective even when it comes to more traditional testing.
+Private testnets are also cumbersome and slow.
+And it becomes literally infeasible when one needs to run thousands of scenarious
+like in our case. Here CLB comes into play.
+In `quickcheck-dynamic` there is a type class `RunModel` that represents a real
+model you want to test. By wiring `clb` library methods into `RunModel` instance
+we can accomplish our goal. At its core there is one methid called `perform`
+with rather convoluted signature which we are omitting here though an interested
+reader can find it in CEM Script sources [TODO: links].
+
+Finally, we can define the property which states that any meaningful sequence
+should succeed:
+
+```haskell
+dynamicSpec = describe "Quickcheck Dynamic" $ do
+  it "Auction random trace works on CLB" $ do
+    quickCheckDLScript $ do
+      anyActions_
+  where
+    quickCheckDLScript :: DL (ScriptState SimpleAuction) () -> IO ()
+    quickCheckDLScript dl = do
+      actors <- execClb getTestWalletSks
+      result <- quickCheckResult $ withMaxSuccess 100 $ runDLScript $ do
+        _ <- action $ SetupConfig $ MkTestConfig { actors }
+        dl
+      isSuccess result `shouldBe` True
+
+    runDLScript :: DL (ScriptState SimpleAuction) () -> Property
+    runDLScript dl =
+      forAllDL
+        dl
+        (runActionsInClb @SimpleAuction genesisValue)
+
+    genesisValue = lovelaceToValue 300_000_000_000
+```
+
+Let run the test-suite in `cem-script` repository to see whether it passes:
+
+```bash
+$ cabal run cem-script-test
+...
+*** Failed! Falsified (after 88 tests and 5 shrinks):
+do action $ SetupConfig
+   action $ SetupParams
+   action $ ScriptTransition Create
+   action $ ScriptTransition Start
+   action $ ScriptTransition Close
+   action $ ScriptTransition Buyout
+   pure ()
+...
+
+
+The machine terminated because of an error...
+
+[ "Matched spine: BuyoutSpine"
+, "Checking transition BuyoutSpine"
+, "Checking constraint Utxo {kind = Out, spec = UserAddress Ask Params.seller, value = somePlutarchCode (somePlutarchCode (Pure (3000000))) (Ask Params.lot)}"
+, "Constraint check failed"])]))
+```
+
+And it does not. According the test scenario we see in output,
+if no bids are happened (besides the initial zero bid)
+_buying out_ doesn't work as expected.
+And indeed, the definition of that transaction
+requires two outputs - one for the bidder and one for the seller:
+
+```haskell
+...
+  , output
+      (userUtxo buyoutBid.bidder)
+      auctionValue
+  , output
+      (userUtxo ctxParams.seller)
+      (cMinLovelace @<> cMkAdaOnlyValue buyoutBid.bidAmount)
+...
+```
+
+When both addresses are the same output constraints can't be verified since two
+outputs get into the way of each other validation.
+Also we can notice that `spentBy` constraint is also redudndant in case no bids
+are made and we conditionally replace it with signedBy.
+So we have to handle this case with a condition
+and the final definition of the `Buyout` transition is:
+
+```haskell
+...
+( BuyoutSpine
+  ,
+    [ input (ownUtxo $ inState WinnerSpine) auctionValue
+      offchainOnly
+        (if'
+          (ctxParams.seller `eq'` buyoutBid.bidder)
+          (signedBy ctxParams.seller)
+          (spentBy
+            buyoutBid.bidder
+            (cMinLovelace @<> cMkAdaOnlyValue buyoutBid.bidAmount)
+            cEmptyValue
+          )
+        )
+    , output
+        (userUtxo buyoutBid.bidder) -- seller is initial zero bidder
+        (cMinLovelace @<> ctxParams.lot)
+    , if'
+        (ctxParams.seller `eq'` buyoutBid.bidder)
+        noop
+        ( output
+            (userUtxo ctxParams.seller)
+            (cMinLovelace @<> cMkAdaOnlyValue buyoutBid.bidAmount)
+        )
+    ]
+  )
+...
+```
+
+So we have just seen how model-based approach can be applied for testing
+on-chain scripts generated by **CEM Script** compiler.
+But with minor efforts an external implementation also can be tested this way.
+Though the corresponding CEM machine should be defined to be used as a model.
+
+This kind of testing can ensure that all sensible sequnces of transitions
+work correctly, though other properties can be expressed as well.
+In the next section we are going to add mutations.
 
 ### Mutation-based property testing: testing CEM Scripts internals
 
 Link to Hydra article
 
 or make stealing of funds possible
-
-The correct definition of the `Buyout`
-
-```haskell
-...
-( BuyoutSpine
-,
-  [ input (ownUtxo $ inState WinnerSpine) auctionValue
-  , offchainOnly
-      ( spentBy
-          buyoutBid.bidder
-          ( cMkAdaOnlyValue buyoutBid.bidAmount
-              @<> cMinLovelace
-          )
-          cEmptyValue
-      )
-  , if'
-      (ctxParams.seller `eq'` buyoutBid.bidder)
-      ( output
-          (userUtxo ctxParams.seller)
-          (cMinLovelace @<> ctxParams.lot)
-      )
-      ( output
-          (userUtxo buyoutBid.bidder)
-          (cMinLovelace @<> ctxParams.lot)
-      )
-  , if'
-      (ctxParams.seller `eq'` buyoutBid.bidder)
-      noop
-      ( output
-          (userUtxo ctxParams.seller)
-          (cMinLovelace @<> cMkAdaOnlyValue buyoutBid.bidAmount)
-      )
-  ]
-)
-...
-```
-
-
-## Unused
-
-To ease the digestion of the idea imagine that `State` is a datum holding the state
-and the `Input` is a redeemer providing the transition signal. .
-
-
 
 # Unified testing with Atlas
 
