@@ -80,7 +80,7 @@ A curious reader can find more information in the
 [Milestone 1 report](https://github.com/mlabs-haskell/clb/blob/master/docs/reports/ms1/MS1-REPORT.md)
 which goes to great lengths to motivate that turn-around.
 
-# Emulator core: `clb` library
+## Emulator core: `clb` library
 
 The core part of the emulator is Haskell `clb` library which is self-sufficient
 for use cases that solely require a pure ledger state. Unlike PSM, CLB uses
@@ -132,7 +132,7 @@ and simplifies debugging.
 For more detailed description of the API please refer to the
 [CLB docs](https://mlabs-haskell.github.io/clb-docs/use/lib).
 
-# CEM Script: CLB as a backend for mutation-based property testing
+## CEM Script: CLB as a backend for mutation-based property testing
 
 The crucial property of CLB we wanted to preserve was speed
 since it becomes critical for property-based testing.
@@ -140,7 +140,7 @@ In this section we present the case of **CEM Script** project
 which brings an interesting example of how dApps on Cardano
 could be tested and how CLB comes handy in doing that.
 
-## CEM Machines
+### CEM Machines
 
 dApps on Cardano consist of validators also known as smart-contracts, and a
 validator can be thought of as a state machine of a specific form
@@ -179,9 +179,9 @@ those `TxConstraints` may look like
 and to familiarize ourselves with an example
 definition for a simple auctioning dApp.
 
-## Detour: DSL to define CEM machines
+### Detour: DSL to define CEM machines
 
-### Buliding blocks
+#### Buliding blocks
 
 In this section we are exploring the approach for defining CEM machines within
 **CEM Script** project. We start with the simplest building blocks and move up to
@@ -297,7 +297,7 @@ type CEMScriptSpec resolved script =
   )
 ```
 
-### Auctioning dApp example
+#### Auctioning dApp example
 
 Now we are ready to define a sample one-script dApp using with **`CEM Script`**
 by defining a corresponding CEM state machine.
@@ -399,7 +399,7 @@ limitations, ans we know they are virtual and don't exist in reality:
 
 TODO: image: auction-state-graph.svg
 
-### The rest of transitions
+#### The rest of transitions
 
 Let's wrap up the rest of the transitions which are going to be more interesting
 and feature more flexibility. Next comes `MakeBid` transition that corresponds
@@ -488,13 +488,13 @@ machinery how to build this transaction. By using `offchainOnly` helper
 constraints that are supposed to be used only when running transaction building
 making them invisible for the on-chain code compiler.
 
-## Back to testing: two steps
+### Back to testing: two steps
 
 In the next two sections we are moving back to the testing,
 starting with reagulr model-based aproach
 and then augmenting it with mutations.
 
-### Step one: model-based testing
+#### Step one: model-based testing
 
 How can we get assurance that the definition of the state machine we came up with
 is sound in terms of bugs which would potentially prevent liveness or lead to crashes?
@@ -589,6 +589,8 @@ but it is utterly ineffective even when it comes to more traditional testing.
 Private testnets are also cumbersome and slow.
 And it becomes literally infeasible when one needs to run thousands of scenarious
 like in our case. Here CLB comes into play.
+Since we have off-chain part that can build transactions being provided with
+a simple query layer we can use bare `clb` library.
 In `quickcheck-dynamic` there is a type class `RunModel` that represents a real
 model you want to test. By wiring `clb` library methods into `RunModel` instance
 we can accomplish our goal. At its core there is one methid called `perform`
@@ -712,7 +714,7 @@ work correctly, though other properties can be expressed as well.
 In the next section we are going to add mutations to this approach
 to cover also negative cases.
 
-### Mutation-based property testing: negative scenarious and more
+#### Mutation-based property testing: negative scenarious and more
 
 Now that we have checked all meaningful sequences, we can go a bit further.
 All sequences we used so far were positive in a sense that they
@@ -863,56 +865,216 @@ Indeed, according `validFailingAction` function a transition is considered
 failing when its off-chain compilation fails. By ensuring that it also fails
 in a real application we can conclude the both behave the same way.
 
-# Unified testing with Atlas
+## Unified testing with Atlas
 
-## Betting dApp
+The next use case of testing dApps with CLB emulator we are going to expore
+is more traditional and can be thought of as a replacement for PSM.
+The latter had their own machineryfor building transactions.
+This fact caused significant duplication of work
+since developers needed to repeat off-chain logic twice -
+first for test within PSM and then for the application itself.
+Moreover, whereas this approach was good for testing on-chain code
+the off-chain part (real code that was used within the application)
+was effectively untested.
+Partialy this problem was solved by Atlas' team and off-chain logic could be
+reused in PSM-based test.
+But definitions of test-cases for PSM and private testnet were
+completely different, which again led to duplication of work or forced developers
+to use only one testing backend, an emulator or a private network.
+Unified testing feature was conceived as a solution to these problems.
 
-The idea of reusing the off-cahin code led us to
-implementing [**unified testing**](https://atlas-app.io/getting-started/testing#overview-of-unified-testing-in-atlas) feature in Atlas.
-It allows running the same test-suite against the emulator
-and a real cardano privnet.
+Let's list all the components we deal with when testing an dApp on Cardano
+and see how they play in the unified testing:
 
+1. An application under testing, which includes:
+  1.1. Smart contracts
+  1.2. Off-chain code operations, that build transactions (or their skeletons)
+  1.3. Glue code to call off-chain operationd from UI/wallets
+2. A test suite, which includes:
+  2.1. Actions that can run operations in test environment without UI
+  2.2. Test-cases that consists of:
+    * A prelude sequence of actions that prepare the state for test-case
+    * A test condition to decide whether a test-case pass
 
-## ? Atlas: using REPL to execute contracts
+In unified testing:
+* All components of an application except glue code (1.3) are covered.
+* The test suite can be run using different backends, including CLB and a testnet.
 
--- https://stackoverflow.com/questions/42425939/how-can-i-use-repl-with-cps-function
+In the following section, we are going to introduce briefly
+a unified testing by testing a trivial spending transaction.
 
-newtype CPSControl b = CPSControl (MVar b)
+For a more realistic example please refer to
+[**testing**](https://atlas-app.io/getting-started/testing#overview-of-unified-testing-in-atlas)
+page on Atlas' docs web site.
+You can find sources of the betting application and its test suite in Atlas'
+repository [here](https://github.com/geniusyield/atlas/tree/main/tests-unified).
 
-startDebugCps :: ((a -> IO b) -> IO b) -> IO (a, CPSControl b)
-startDebugCps cps = do
-  cpsVal <- newEmptyMVar
-  stopAndRet <- newEmptyMVar
-  void . forkIO $
-    void . cps $ \c -> putMVar cpsVal c >> readMVar stopAndRet
-  s <- takeMVar cpsVal
-  return (s, CPSControl stopAndRet)
+### Trivial transaction example
 
-stopDebugCps :: CPSControl b -> b -> IO ()
-stopDebugCps (CPSControl stopAndRet) = putMVar stopAndRet
+Unified testing feature provide two functions to build test cases:
 
-testCps :: GYCoreConfig -> (GYProviders -> IO a) -> IO a
-testCps c = withCfgProviders c "test"
+```haskell
+mkPrivnetTestFor :: Setup -> TestName -> (TestInfo -> GYTxGameMonad a) -> TestTree
+mkTestFor ::                 TestName -> (TestInfo -> GYTxGameMonad a) -> TestTree
+```
 
-eval' :: GYProviders -> GYTxGameMonadIO a -> IO a
-eval' = runGYTxGameMonadIO GYTestnetPreview
+Both functions have similar signatures - they take a name for a test case
+and a continuation function of type `TestInfo -> GYTxGameMonad a`.
+Then they internally setup testing environment represented with
+`TestInfo` data type to run the continuation in it.
 
+`mkPrivnetTestFor` additionally takes a value of type `Setup`
+that contains an instance of a private network,
+whereas `mkTestFor` that makes a test case backed by CLB - does not.
+This highlights an important distinction in thr way they work:
 
+* `mkTestFor` spawns a new instance of CLBb on every call and every test case is
+run in a fresh (new) ledger state.
+* `mkPrivnetTestFor` is supposed to be run inside a helper function
+`withPrivnet` which spins up one and only private testnet and executes
+the whole test suite using it.
 
+We are going to write a test that simply sends 100 ADA from
+a testing wallet to some arbitrary address.
+Our off-chain code works in
+[`GYTxQueryMonad` monad](https://atlas-app.io/getting-started/operations#interlude---gytxquerymonad)
+that brings notion of __own addresses of a particular wallet__
+and yields a transaction skeleton that should has an output and
+should be singed by a key of the wallet:
 
-cfg <- coreConfigIO "atlas-config.json"
-(providers, ctrl) <- startDebugCps $ testCps cfg
-5:57
-Now, with access to providers I can run in GYTxGameMonad code (such as my contracts) using the eval' utility above.
-I usually alias eval = eval' providers in my REPL
+```haskell
+mkTrivialTx :: GYTxUserQueryMonad m => m (GYTxSkeleton 'PlutusV2)
+mkTrivialTx = do
+  -- The first own address
+  addr <-
+    maybeM
+      (throwAppError $ someBackendError "No own addresses")
+      pure
+      $ listToMaybe <$> ownAddresses
+  -- Its public key hash
+  pkh <- addressToPubKeyHash' addr
+  -- Random address
+  let targetAddr = unsafeAddressFromText "addr_test1qr2vfnt..."
+  return $
+    mustHaveOutput
+      ( GYTxOut
+          { gyTxOutAddress = targetAddr
+          , gyTxOutValue = valueFromLovelace 100_000_000
+          , gyTxOutDatum = Nothing
+          , gyTxOutRefS = Nothing
+          }
+      )
+      <> mustBeSignedBy pkh
+```
 
-# Emulating cardano-node: betting dApp on CTL
+Now we can write an test that checks that wallet indeed looses 100 ADA
+when the transaction happens. This function effectively combines
+the action (2.1) and the test condition (2.2) test for simplicity's sake,
+though one should keep those two parts separate since quite often actions
+are reused:
+
+TODO: factor out the action as binding in where
+
+```haskell
+{- | Trace for a super-simple spending transaction.
+-}
+simpleTxTest :: GYTxGameMonad m => TestInfo -> m ()
+simpleTxTest (testWallets -> Wallets {w1}) = do
+  -- The condition
+  withWalletBalancesCheckSimple [w1 := valueFromLovelace (-100_000_000)]
+    -- The action
+    . asUser w1
+    $ do
+      skeleton <- mkTrivialTx
+      gyLogDebug' "" $ printf "tx skeleton: %s" (show skeleton)
+      txId <- buildTxBody skeleton >>= signAndSubmitConfirmed
+      gyLogDebug' "" $ printf "tx submitted, txId: %s" txId
+```
+
+Here we get access to wallet `w1` from the environment and runs the transaction
+on its behalf using function `asUser`. Finally, we can make a test with
+`mkPrivnetTestFor` or `mkTestFor`:
+
+```haskell
+clbSuite :: TestTree
+clbSuite = testGroup "Group"
+    [ mkTestFor "Simple tx" simpleTxTest
+    ]
+
+testnetSuite :: Setup -> TestTree
+testnetSuite setup = testGroup "Place Group"
+    [ mkPrivnetTestFor_ "Simple tx" simpleTxTest
+    ]
+ where
+  mkPrivnetTestFor_ = flip mkPrivnetTestFor setup
+```
+
+Having the ability to switch backends allows developers to start off with
+quick and light CLB emulator and later switch transparently to a real testnet
+once a need arises if emulator's functionality is not enough.
+Otherwise, at the final stage of development the whole test suite can be
+run against a real testnet with no need of rewriting any its parts.
+Out of couriosity, let's check how long does it take to run our trivial
+test suite against the emulator and a real testnet:
+
+```bash
+$ time cabal run atlas-unified-tests
+
+Simple tx: OK (0.12s)
+
+  Emulator log :
+  --------------
+  Slot 0:
+    ...
+    [DEBUG]  utxosAtAddress, refs: [TxOutRef {txOutRefId = 01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53, txOutRefIdx = 1}]
+    [DEBUG]  fee: 178525 lovelace
+             validity range: (Nothing,Nothing)
+             inputs:
+               - ref: 01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53#1
+                 addr: addr_test1vzgr3pyndlkgdnxnucfnu2y7072skuy6vzlkftc0nhrygyqsj6qx8
+                 value: ... + 1000000000000 lovelace
+              ...
+    [DEBUG]  encoded tx:
+              84a400d901028182582001f4b788593d4f...
+  Slot 1:
+    [DEBUG]  tx submitted, txId: 7d487313607909080f4615edc9961287ee6eaaa761e98d30f9146b307655644b
+    ...
+
+All 1 tests passed (0.12s)
+
+real	0m0.847s
+user	0m0.727s
+sys	  0m0.113s
+```
+
+As we can see, the test takes 0.85s to run, which is not instantenous, but
+pretty quick in comparison with a testnet where the test itself takes four
+times londer and additionally takes more than a minute and a half to start
+testnet:
+
+```bash
+$ time cabal run atlas-unified-tests -- --testnet
+Simple tx: OK (3.05s)
+  Querying utxos At Addresses: [unsafeAddressFromText "addr_test1vz..."]
+  ownAddr: unsafeAddressFromText "addr_test1vz..."
+  GYTxSkeleton {...}
+  tx skeleton: GYTxSkeleton {...}
+  Querying utxos At Addresses: [unsafeAddressFromText "addr_test1vz..."]
+
+All 1 tests passed (3.05s)
+
+real	1m37.854s
+user	0m20.597s
+sys  	0m2.654s
+```
+
+## Emulating cardano-node: betting dApp on CTL
 
 when the emulator mimics a real `cardano-node`
 by maintaining an IPC socket
 that supports a subset of Ouroboros mini-protocols.
 
-# Useful Links
+## Useful Links
 
 * [CLB repository]() on GitHub
 * [CLB docs web-site]()
