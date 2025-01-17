@@ -1074,18 +1074,18 @@ sys  	0m2.654s
 ### Providing access to emulator from non-Haskell environments
 
 The cases we covered so far pertained to Haskell land, so we were able
-to use either a `clb` library alone or in combination with Atlas PAB.
+to use either a `clb` library alone or its combination with Atlas PAB.
 In this section we are taking a journey to Purescript and
 [CTL](https://github.com/Plutonomicon/cardano-transaction-lib) library.
 Whereas PAB like Atlas are meant to run on server side,
-CTL is a set components for bulding dApps that can be run entirely
+CTL is a set of components for bulding dApps that can be run entirely
 in a browser.
 
 Like PABs, CTL has the notion of provider (known as `QueryHandle`)
 which is an abstraction over query and submission blockchain layers.
 External gateways like Blockfrost (currently the only external provider
 supported out-of-the-box) and a local backend known as
-**KON** (Kupo + Ogmios + Node) can be utilized to run applications
+**KON** (Kupo + Ogmios + Node) can be used to run applications
 as well as tests.
 
 To make CLB emulator accessible to CTL (and potentially other frameworks)
@@ -1094,19 +1094,21 @@ we had two options:
 the exisiting local backend provider.
 * Roll out a custom `QueryHandle` implementation.
 
-We opted for the former approach mostly because it looked more consistent,
-allowed reusing existing parts and because `QueryHandle` API was (and is still)
-not standardized, so it would be not compatible with other frameworks excrept CTL.
+We opted for the former approach mostly due to its consistency,
+reusing existing parts and because `QueryHandle` API was (and is still)
+not standardized, so it would be not compatible with other frameworks
+besides CTL.
 CTL talks to the emulator binary via Ogmios, and query the sate using Kupo,
 though one can work directly with mini-protocols.
 
-To mimic the node we built an executable called `cardano-node-socket-emulator`
+To mimic the node there is an executable called `cardano-node-socket-emulator`
 based on the `clb` library we've already seen that is supposed to be used
-in lieu of real `cardano-node` executable when doing testing.
-This executable is compatible (to some extent) with cardano-node and
-maintains an IPC socket that implements a subset of __Ouroboros mini-protocols__.
+in lieu of a real `cardano-node` executable when doing testing.
+This executable is compatible (to some extent) with `cardano-node` in terms
+of CLI and maintains an IPC socket that implements a subset
+of __Ouroboros mini-protocols__.
 The ledger state is handled by `clb` as before, and on top of it some additional
-features were added to make mimicing possible:
+required mechanisms run:
 * A separate thread to count slots that emulates time.
 * A mempool that maintains its own so-called "cached" state.
 * A trivial block-producing procedure that forges blocks
@@ -1117,19 +1119,24 @@ which helps keeping it pretty fast in comparison with a private testnet.
 
 ### Integrating emulator binary
 
-It's not so easy to run up the emulator binary to spin up a degenerated testnet
-that consists of one node which is in change of producing blocks in this network.
-Though the number of commands and options the emulator takes much less smaller
-then for a real `cardano-node`, it is still problematic to do manaully.
+The environment that uses the emulator should run it to spin up
+a degenerated testnet that consists of one emulator node
+which is in change of producing blocks and all other actions.
+Though the number of commands and options the emulator takes
+much less smaller then for a real `cardano-node`,
+it is still problematic to do that manually.
 For this end we are using the same approach we use for a real testnet,
 namely `cardano-testnet` from `cardano-node`.
 Under the hood this tool uses `cardano-api` to genereate a number of
 genesis keys, testnet configuration including genesis files
-based on your preferences and an executable over that configuration.
-`CARDANO_NODE` environment variable can be used to specify another binary.
+based on user's preferences and run a set of nodes
+over generated configuration.
+`CARDANO_NODE` environment variable can be used
+to specify another binary to run, so we can easily plug in the emulator.
 
 The emulator binary itself can be pulled into your project usign Nix flakes,
 please refer to [clb-docs](https://mlabs-haskell.github.io/clb-docs/getting-started#using-clb-executable-with-nix) website.
+
 
 ### Unified testing in CTL
 
@@ -1138,6 +1145,17 @@ emulated network backed by the emulator without changing the code of
 an application or a test suire gives developers some degree of freedom.
 An emulated network works much slower than a built-in `clb` state but
 it is still much faster than a private testnet.
+
+Another important difference to bear in mind is that it's not possible
+anymore to quickly travel in time. Awaiting for a particular slot will
+take some time based on slot's duration. Though you can keep the length
+of slots very short to compensate this downside.
+
+To showcase this approach works we reimplemented the betting dApp from
+Atlas [using CTL](https://github.com/Plutonomicon/cardano-transaction-lib/pull/1655).
+
+Take a look at [CTL documentation](https://github.com/Plutonomicon/cardano-transaction-lib/blob/develop/doc/cardano-testnet-testing.md)
+to learn more about testing dApps with CTL and CLB.
 
 
 ## Useful Links
@@ -1149,13 +1167,10 @@ it is still much faster than a private testnet.
 * [CTL]()
 * [PSM repository]() on GitHub (archived)
 * [The extended UTxO model] ()
-*
 
-TODO: link article in the documenatation
 
-TODO: update Changelog
 
-TODO: add badges to README
+
 
 [^1]: Now the whole [_Plutus Application Framework_](https://github.com/IntersectMBO/plutus-apps)
 is officially archived, but the emulator budded off as a
