@@ -113,7 +113,7 @@ which means there is no notion of:
 * blocks
 
 The former poses a problem for testing,\ since quite often the logic relies
-on time. Moreover, testing time-dependent contracts against a real network 
+on time. Moreover, testing time-dependent contracts against a real network
 is also problematic without scaling validity intervals:
 waiting over even a non-significant span is prohibitively slow.
 Scaling also comes at some price and potentially could hide subtle bugs.
@@ -530,11 +530,11 @@ precondition ::
 ```
 
 Turns out we can implement it in a very straightforward manner by reusing
-some functions from the off-chain machinery of **CEM Script**. 
+some functions from the off-chain machinery of **CEM Script**.
 First, let's take a brief look at how it works.
-The entry point called `resolveTx` takes a specification 
-for a prospective transaction and tries to build it. 
-You can think of `TxSpec` data type as a list of __transitions__ 
+The entry point called `resolveTx` takes a specification
+for a prospective transaction and tries to build it.
+You can think of `TxSpec` data type as a list of __transitions__
 and `ResolvedTx` as the final recipe to build a `cardano-api` transaction:
 
 ```haskell
@@ -862,7 +862,7 @@ negative scenarios and to demonstrate that the order of constraints doesn't
 matter since it was one of the assumptions we used in the **CEM Script** development.
 Indeed, according to `validFailingAction` function a transition is considered
 failing when its off-chain compilation fails. By ensuring that it also fails
-in a real application, we can conclude that both behave the same way 
+in a real application, we can conclude that both behave the same way
 (of course, up to state details we don't check yet).
 
 ## Unified testing with Atlas
@@ -876,7 +876,7 @@ first for tests within PSM and then for the application itself.
 Moreover, whereas this approach was good for testing on-chain code
 the off-chain part (real code that was used within the application)
 was effectively untested.
-Partially this problem was solved by the initial Atlas development 
+Partially this problem was solved by the initial Atlas development
 and off-chain logic could be reused in PSM-based tests.
 But definitions of test cases for PSM and private testnet were
 completely different, which again led to duplication of work or forced developers
@@ -907,7 +907,8 @@ For a more realistic example please refer to
 [**testing**](https://atlas-app.io/getting-started/testing#overview-of-unified-testing-in-atlas)
 page on Atlas' docs website.
 You can find sources of the betting application and its test suite in Atlas'
-repository [here](https://github.com/geniusyield/atlas/tree/main/tests-unified).
+repository [here](https://github.com/geniusyield/atlas/tree/main/tests-unified)
+or in a separate [repository](https://github.com/mlabs-haskell/atlas-bet-ref).
 
 ### Trivial transaction example
 
@@ -938,8 +939,8 @@ We are going to write a test that simply sends 100 ADA from
 a testing wallet to some arbitrary address.
 Our off-chain code works in
 [`GYTxQueryMonad` monad](https://atlas-app.io/getting-started/operations#interlude---gytxquerymonad)
-that brings the notion of __own addresses__ of a particular wallet, 
-(here - a test wallet) and yields a transaction skeleton 
+that brings the notion of __own addresses__ of a particular wallet,
+(here - a test wallet) and yields a transaction skeleton
 that should have a particular output and be signed with the key of the wallet:
 
 ```haskell
@@ -1070,9 +1071,74 @@ sys  	0m2.654s
 
 ## Emulating cardano-node: betting dApp on CTL
 
-when the emulator mimics a real `cardano-node`
-by maintaining an IPC socket
-that supports a subset of Ouroboros mini-protocols.
+### Providing access to emulator from non-Haskell environments
+
+The cases we covered so far pertained to Haskell land, so we were able
+to use either a `clb` library alone or in combination with Atlas PAB.
+In this section we are taking a journey to Purescript and
+[CTL](https://github.com/Plutonomicon/cardano-transaction-lib) library.
+Whereas PAB like Atlas are meant to run on server side,
+CTL is a set components for bulding dApps that can be run entirely
+in a browser.
+
+Like PABs, CTL has the notion of provider (known as `QueryHandle`)
+which is an abstraction over query and submission blockchain layers.
+External gateways like Blockfrost (currently the only external provider
+supported out-of-the-box) and a local backend known as
+**KON** (Kupo + Ogmios + Node) can be utilized to run applications
+as well as tests.
+
+To make CLB emulator accessible to CTL (and potentially other frameworks)
+we had two options:
+* Mimic the node in a limited way, and keep using Kupo and Ogmios and
+the exisiting local backend provider.
+* Roll out a custom `QueryHandle` implementation.
+
+We opted for the former approach mostly because it looked more consistent,
+allowed reusing existing parts and because `QueryHandle` API was (and is still)
+not standardized, so it would be not compatible with other frameworks excrept CTL.
+CTL talks to the emulator binary via Ogmios, and query the sate using Kupo,
+though one can work directly with mini-protocols.
+
+To mimic the node we built an executable called `cardano-node-socket-emulator`
+based on the `clb` library we've already seen that is supposed to be used
+in lieu of real `cardano-node` executable when doing testing.
+This executable is compatible (to some extent) with cardano-node and
+maintains an IPC socket that implements a subset of __Ouroboros mini-protocols__.
+The ledger state is handled by `clb` as before, and on top of it some additional
+features were added to make mimicing possible:
+* A separate thread to count slots that emulates time.
+* A mempool that maintains its own so-called "cached" state.
+* A trivial block-producing procedure that forges blocks
+from the content of the mempool.
+
+The emulator doesn't use consensus and any sort of inter-node communication
+which helps keeping it pretty fast in comparison with a private testnet.
+
+### Integrating emulator binary
+
+It's not so easy to run up the emulator binary to spin up a degenerated testnet
+that consists of one node which is in change of producing blocks in this network.
+Though the number of commands and options the emulator takes much less smaller
+then for a real `cardano-node`, it is still problematic to do manaully.
+For this end we are using the same approach we use for a real testnet,
+namely `cardano-testnet` from `cardano-node`.
+Under the hood this tool uses `cardano-api` to genereate a number of
+genesis keys, testnet configuration including genesis files
+based on your preferences and an executable over that configuration.
+`CARDANO_NODE` environment variable can be used to specify another binary.
+
+The emulator binary itself can be pulled into your project usign Nix flakes,
+please refer to [clb-docs](https://mlabs-haskell.github.io/clb-docs/getting-started#using-clb-executable-with-nix) website.
+
+### Unified testing in CTL
+
+The ability to switch between a private testnet backed by real nodes and
+emulated network backed by the emulator without changing the code of
+an application or a test suire gives developers some degree of freedom.
+An emulated network works much slower than a built-in `clb` state but
+it is still much faster than a private testnet.
+
 
 ## Useful Links
 
