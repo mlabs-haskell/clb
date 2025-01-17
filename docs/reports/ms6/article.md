@@ -3,7 +3,8 @@
 Cardano | Written By Ilia Rodionov
 
 
-In this article, we look at testing with **CLB** - Cardano emulator developed by MLabs.
+In this article, we look at testing with **CLB** -
+a Cardano emulator developed by MLabs.
 We show how CLB and related tools can be used in various testing approaches
 when building dApps on Cardano.
 
@@ -17,19 +18,20 @@ We start our journey looking at `clb` library,
 which is the core part of the emulator.
 Then we examine the case of **CEM Script** project,
 that demonstrates how standalone `clb` library can be used for
-a rather specific kind of _model-based_ and _mutation-based_ property testing.
+a rather specific kind of _model-based_
+and _mutation-based_ property testing.
 
 Then we present a more usual case that covers testing dApps combining
 CLB and [**Atlas PAB**](https://atlas-app.io/) which is very close to
 the testing approach of the CLB's predecessor - PSM library.
 
-Finally, we give an overview of the **node emulator mode** of CLB
+Finally, we give an overview of the **node mode** of CLB emulator
 which is the most universal way to use it.
 Being language-agnostic, it is the fit for cases when CLB emulator
 is used in non-Haskell environments.
-Particularly, we introduce a case study that shows the use of CLB
-within a Purescript-based library for dApp development -
-[CTL](https://github.com/Plutonomicon/cardano-transaction-lib).
+Particularly, we shortly introduce a case study of
+[CTL](https://github.com/Plutonomicon/cardano-transaction-lib) -
+a Purescript-based library for dApp development.
 
 Let's commence!
 
@@ -112,7 +114,7 @@ which means there is no notion of:
 * time, slots, and epochs
 * blocks
 
-The former poses a problem for testing,\ since quite often the logic relies
+The former poses a problem for testing, since quite often the logic relies
 on time. Moreover, testing time-dependent contracts against a real network
 is also problematic without scaling validity intervals:
 waiting over even a non-significant span is prohibitively slow.
@@ -974,8 +976,6 @@ the action (2.1) and the test condition (2.2) test for simplicity's sake,
 though one should keep those two parts separate since quite often actions
 are reused:
 
-TODO: factor out the action as binding in where
-
 ```haskell
 {- | Trace for a super-simple spending transaction.
 -}
@@ -1094,25 +1094,29 @@ we had two options:
 the exisiting local backend provider.
 * Roll out a custom `QueryHandle` implementation.
 
-We opted for the former approach mostly due to its consistency,
+We opted for the former approach mostly due to its consistency and compatibility
 reusing existing parts and because `QueryHandle` API was (and is still)
 not standardized, so it would be not compatible with other frameworks
 besides CTL.
-CTL talks to the emulator binary via Ogmios, and query the sate using Kupo,
-though one can work directly with mini-protocols.
+CTL talks to the emulator process via Ogmios, and query the sate using Kupo,
+though one can work directly using mini-protocols if needed.
 
 To mimic the node there is an executable called `cardano-node-socket-emulator`
 based on the `clb` library we've already seen that is supposed to be used
 in lieu of a real `cardano-node` executable when doing testing.
 This executable is compatible (to some extent) with `cardano-node` in terms
 of CLI and maintains an IPC socket that implements a subset
-of __Ouroboros mini-protocols__.
+of __Ouroboros mini-protocols__ needed:
+* chain sync
+* tx submission
+* state query
+
 The ledger state is handled by `clb` as before, and on top of it some additional
 required mechanisms run:
 * A separate thread to count slots that emulates time.
 * A mempool that maintains its own so-called "cached" state.
 * A trivial block-producing procedure that forges blocks
-from the content of the mempool.
+from the content of the emulator's mempool.
 
 The emulator doesn't use consensus and any sort of inter-node communication
 which helps keeping it pretty fast in comparison with a private testnet.
@@ -1136,7 +1140,6 @@ to specify another binary to run, so we can easily plug in the emulator.
 
 The emulator binary itself can be pulled into your project usign Nix flakes,
 please refer to [clb-docs](https://mlabs-haskell.github.io/clb-docs/getting-started#using-clb-executable-with-nix) website.
-
 
 ### Unified testing in CTL
 
@@ -1168,9 +1171,7 @@ to learn more about testing dApps with CTL and CLB.
 * [PSM repository]() on GitHub (archived)
 * [The extended UTxO model] ()
 
-
-
-
+---
 
 [^1]: Now the whole [_Plutus Application Framework_](https://github.com/IntersectMBO/plutus-apps)
 is officially archived, but the emulator budded off as a
@@ -1178,10 +1179,10 @@ is officially archived, but the emulator budded off as a
 
 [^2]: As ["The Extended UTXO Model"](https://iohk.io/en/research/library/papers/the-extended-utxo-model/)
 paper explains, validators can be modeled as silghtly alternated
-[Mealy machines](https://en.wikipedia.org/wiki/Mealy_machine)
+[Mealy machines](https://en.wikipedia.org/wiki/Mealy_machine).
 
 [^3]: For more ideas on how mutation testing can be used to test validators
 on Cardano see Arnaud Bailly's article
-[Mutation-based TDD](https://abailly.github.io/posts/mutation-testing.html)
+[Mutation-based TDD](https://abailly.github.io/posts/``mutation-testing.html).
 
 Tags: blockchain | cardano | testing
