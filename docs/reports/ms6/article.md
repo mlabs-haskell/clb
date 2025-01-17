@@ -16,20 +16,23 @@ that can be accomplished using a new member of MLabs' core tools family.
 
 We start our journey looking at the `clb` library,
 which is the core part of the emulator.
-Then we examine the case of the **CEM Script** project,
-that demonstrates how the standalone `clb` library can be used for
-a rather specific kind of _model-based_
-and _mutation-based_ property testing.
+
+Then we examine the case of
+[**CEM Script**](https://github.com/mlabs-haskell/cem-script)
+project,
+that demonstrates how standalone `clb` library can be used for
+a rather specific kind of __model-based__
+and __mutation-based__ property testing.
 
 Then we present a more usual case that covers testing dApps combining
 CLB and [**Atlas PAB**](https://atlas-app.io/) which is very close to
 the testing approach of the CLB's predecessor - PSM library.
 
-Finally, we give an overview of the **node mode** of the CLB emulator
+Finally, we give an overview of the __node mode__ of CLB emulator
 which is the most universal way to use it.
 Being language-agnostic, it is the only fit for non-Haskell environments.
 Particularly, we shortly introduce a case study of
-[CTL](https://github.com/Plutonomicon/cardano-transaction-lib) -
+[**CTL**](https://github.com/Plutonomicon/cardano-transaction-lib) -
 a Purescript-based library for dApp development.
 
 Let's commence!
@@ -40,7 +43,7 @@ Historically when Cardano entered the Alonzo era
 and the introduction of the Plutus language blazed the trail
 to building dApps on Cardano
 there existed no usable emulator.
-The emulator from IOG's _Plutus Application Framework_[^1]
+The emulator from IOG's __Plutus Application Framework__[^1]
 didn't play well and later tended to fall behind
 the cadence of the next major Cardano releases.
 
@@ -53,7 +56,7 @@ It caught on as a primary testing tool
 and has been used for quite a long time.
 
 PSM was very lean in terms of dependency footprint and very fast.
-It gave accurate estimates for resource usage 
+It gave accurate estimates for resource usage
 since it was based on the `plutus-ledger-api`.
 One peculiarity of PSM was their custom ledger state management,
 i.e. a simplified set of rules for handling transactions
@@ -65,7 +68,7 @@ as time went on, so PSM started to suffer from many issues which deteriorated
 developer experience or made some checks impossible.
 
 Despite this fact, PSM was chosen as a testing backend for a new
-PAB (Plutus Application Backend) [**Atlas**](https://atlas-app.io/)
+PAB (Plutus Application Backend) **Atlas**
 developed by a consortium led by GeniusYield.
 
 As the next step on the way of pushing PSM to new horizons,
@@ -75,7 +78,7 @@ focused on improving the existing PSM library.
 During the work on the first milestone, we came up with a
 [change request](https://drive.google.com/file/d/1b6A0w-YGZs1oGC9ZLPGgvl0LmFg2jLjl/view)
 which asked for a pivot towards the development of a new emulator called CLB,
-which stands for _Cardano ledger backend_ and pronounced /klʌb/.
+which stands for __Cardano ledger backend__ and pronounced /klʌb/.
 A curious reader can find more information in the
 [Milestone 1 report](https://github.com/mlabs-haskell/clb/blob/master/docs/reports/ms1/MS1-REPORT.md)
 which goes to great lengths to motivate that turn-around.
@@ -90,7 +93,7 @@ the same way the real ledger does (being properly configured).
 The API provided by the `clb` library is utterly simple
 and mostly defined over types from `cardano-api`
 which makes the client code highly compatible with a real node.
-It implements a _pure state_ that holds a ledger instance
+It implements a __pure state__ that holds a ledger instance
 that one can easily and cheaply spin up,
 getting access to corresponding signing keys that control initial funds.
 Among core supported operations:
@@ -136,7 +139,7 @@ For a more detailed description of the API please refer to the
 
 The crucial property of CLB we wanted to preserve was the speed,
 since it becomes critical for property-based testing.
-In this section, we present the case of **CEM Script** project
+In this section, we present the case of CEM Script project
 which brings up an interesting example of how dApps on Cardano
 could be tested and how CLB comes in handy in doing that.
 
@@ -144,19 +147,19 @@ could be tested and how CLB comes in handy in doing that.
 
 dApps on Cardano consist of validators also known as smart contracts, and a
 validator can be thought of as a state machine of a specific form
-called _Constraint Emitting Machines_[^2].
+called __Constraint Emitting Machines__[^2].
 A valid transition in a CEM corresponds
 to a single valid transaction on the chain
 (though one transaction can span over several scripts).
-The name _Constraints Emitting Machines_ comes from the way
-transitions are defined as a function of the _state_ and the _input_
+The name __Constraints Emitting Machines__ comes from the way
+transitions are defined as a function of the __state__ and the __input__
 that emits a set of `TxConstraints` along with the new state:
 
 ```haskell
 transition :: State → Input → Maybe (State, TxConstraints)
 ```
 
-Having a definition of such a state machine, **CEM Script** machinery can
+Having a definition of such a state machine, CEM Script machinery can
 derive different parts of a dApp including:
 * On-chain validator that ensures that we are transitioning to a valid
 target state via a transaction that satisfies the emitted constraints.
@@ -171,7 +174,7 @@ It turns out that CEM machines are very prolific
 in terms of testing possibilities that they crack open.
 We can not only check that two parts go well together
 but also turn the off-chain machinery into a model
-to apply _model-based testing_.
+to apply __model-based testing__.
 
 But let's take a short break and have a detour towards the DSL
 for defining CEM machines to understand what exactly
@@ -182,16 +185,16 @@ of such a definition for a simple auctioning dApp.
 ### Detour: DSL to define CEM machines
 
 In this section, we are exploring the approach for defining CEM machines within
-**CEM Script** project. We start with the simplest building blocks and move up to
+CEM Script project. We start with the simplest building blocks and move up to
 higher-level structures, going from the bottom to the top.
- 
+
 #### Building blocks
 
-As we mentioned above, the DSL is used to generate both on-chain and off-chain
-components.
-
-**CEM Script** constraint language is based on `ConstraintDSL` GADT which
-allows expressing terms of the language 
+As we mentioned above, within CEM Script a DSL is used
+to define CEM machines and generate both on-chain
+and off-chain components.
+This language is based on `ConstraintDSL` GADT which
+allows expressing terms of the language
 (some constructors are elided for brevity):
 
 ```haskell
@@ -237,7 +240,7 @@ type family DSLPattern (resolved :: Bool) script value where
   DSLPattern True _ value = Void
 ```
 
-As we can see, during the **off-chain translation**, regular __values__ are
+As we can see, during the __off-chain translation__, regular __values__ are
 evaluates to something of type `value` in `ConstraintDSL script value`
 and the __patterns__ are completely eliminated.
 It's possible because the state is always known off-chain so all condition
@@ -300,12 +303,12 @@ type CEMScriptSpec resolved script =
 
 #### Auctioning dApp example
 
-Now we are ready to define a sample one-script dApp using **`CEM Script`**
+Now we are ready to define a sample one-script dApp using CEM Script
 by defining a corresponding CEM state machine.
 We are going to build a simple English auction application.
-Let's start with **states**.
+Let's start with __states__.
 For any state, arbitrary (on-chain representable) data can be attached,
-and in our case, we are going to define and use the `Bid` data type 
+and in our case, we are going to define and use the `Bid` data type
 that contains the bid amount and the bidder public key:
 
 ```haskell
@@ -329,7 +332,7 @@ data SimpleAuctionState
       }
 ```
 
-Now that we have states defined we can define a set of possible **transitions**,
+Now that we have states defined we can define a set of possible __transitions__,
 that move the state.
 Some of them may require arguments that should be passed when a transition happens:
 
@@ -385,8 +388,8 @@ not bare constructors we saw in the previous section):
         ...
 ```
 
-It should be self-explaining if we ignore the word __spine__ 
-and an exotic operator `::=` in this code. 
+It should be self-explaining if we ignore the word __spine__
+and an exotic operator `::=` in this code.
 The first transition requires that a `seller`
 (from script parameters, the part we omitted to keep the article shorter)
 should sign the transaction and spend `cMinLovelace`, and one output should go
@@ -519,7 +522,7 @@ sequences of transitions from a whole bunch of random ones we generate.
 To do that we need a decision function that can check whether a particular
 transition is sound being provided with the current state of execution
 and the definition of a CEM machine.
-In [quckcheck-dynamic](TODO:) library it's known as
+In `quckcheck-dynamic` library it's known as
 `precondition` method of `StateModel` type-class
 that takes the current state, the action in question, and tells
 whether it's a meaningful one over the state provided:
@@ -533,7 +536,7 @@ precondition ::
 ```
 
 Turns out we can implement it in a very straightforward manner by reusing
-some functions from the off-chain machinery of **CEM Script**.
+some functions from the off-chain machinery of CEM Script.
 First, let's take a brief look at how it works.
 The entry point called `resolveTx` takes a specification
 for a prospective transaction and tries to build it.
@@ -590,17 +593,17 @@ Now that we have the model, what is that __real application__ we mentioned?
 In the real world, it is an application deployed on the Cardano mainnet or testnet,
 but it is very ineffective even when it comes to more traditional testing.
 Private testnets are also cumbersome and slow.
-It becomes infeasible when one needs to run thousands of scenarios like we do. 
+It becomes infeasible when one needs to run thousands of scenarios like we do.
 Here CLB comes into play.
 Since we have the off-chain part that can build transactions being provided with
 a simple query layer we can use the bare `clb` library.
 In `quickcheck-dynamic` exists a type class `RunModel` to represent a real
 model you want to test. By wiring `clb` library methods into `RunModel` instance
-we can define how to execute actions against the real system 
+we can define how to execute actions against the real system
 (so the name RunModel is a bit misnomer).
 At its core, there is one method called `perform`
 with a rather convoluted signature which we are omitting here.
-An interested reader can find it in **CEM Script** sources[^5].
+An interested reader can find it in CEM Script sources[^5].
 
 Finally, we can define the property which states that any meaningful sequence
 should succeed:
@@ -709,7 +712,7 @@ and the final definition of the `Buyout` transition is:
 ```
 
 So we have just seen how the model-based approach can be applied to testing
-on-chain scripts generated by **CEM Script** compiler.
+on-chain scripts generated by CEM Script compiler.
 With some effort, an external implementation also can be tested this way.
 The only requirement is that the corresponding CEM machine
 should be defined to serve as a model and an external script implementation
@@ -805,9 +808,9 @@ genMutation transition =
 ```
 
 Next, we have to implement `validFailingAction` method of `StateModel` class.
-which is another _decision function_ like `precondition` but for actions that
+which is another __decision function__ like `precondition` but for actions that
 can be meaningfully run but are supposed to fail.
-An action will be treated as a _negative_ if 'precondition' fails for it
+An action will be treated as a __negative__ if 'precondition' fails for it
 and 'validFailingAction' succeeds.
 Such actions should not modify the model state
 (though there is `failureNextState` method in case they should).
@@ -865,7 +868,7 @@ Mutations (4006 in total):
 In addition to the task of testing a particular script definition, this technique
 allowed us to ensure that on-chain and off-chain parts match each other in
 negative scenarios and to demonstrate that the order of constraints doesn't
-matter since it was one of the assumptions we used in the **CEM Script** development.
+matter since it was one of the assumptions we used in the CEM Script development.
 Indeed, according to `validFailingAction` function a transition is considered
 failing when its off-chain compilation fails. By ensuring that it also fails
 in a real application, we can conclude that both behave the same way
@@ -893,14 +896,14 @@ Let's list all the components we deal with when testing a dApp on Cardano
 and see how they play in the unified testing:
 
 1. An application under testing, which includes:
-  1.1. Smart contracts
-  1.2. Off-chain code operations, that build transactions (or their skeletons)
-  1.3. Glue code to call off-chain operations from UI/wallets
+    1.1. Smart contracts
+    1.2. Off-chain code operations, that build transactions (or their skeletons)
+    1.3. Glue code to call off-chain operations from UI/wallets
 2. A test suite, which includes:
-  2.1. Actions that can run operations in a test environment without UI
-  2.2. Test cases that consist of:
-    * A prelude sequence of actions that prepare the state for test-case
-    * A test condition to decide whether a test case pass
+    2.1. Actions that can run operations in a test environment without UI
+    2.2. Test cases that consist of:
+        * A prelude sequence of actions that prepare the state for test-case
+        * A test condition to decide whether a test case pass
 
 In unified testing:
 * All components of an application except glue code (1.3) are covered.
@@ -1155,7 +1158,7 @@ it is still much faster than a private testnet.
 
 Another important difference to bear in mind is that it's not possible
 anymore to quickly travel in time. Awaiting for a particular slot will
-take some time based on the slot's duration. 
+take some time based on the slot's duration.
 However, the length of slots can be very short to compensate for that.
 
 To showcase this approach works we reimplemented the betting dApp from
@@ -1185,12 +1188,12 @@ paper explains, on-chain validators can be modeled as slightly alternated
 [Mealy machines](https://en.wikipedia.org/wiki/Mealy_machine).
 
 [^3]: The ability to lift [Plutarch](https://github.com/Plutonomicon/plutarch-plutus) functions
-is one of the two ways of increasing the expressiveness of the CEM Script DSL. 
+is one of the two ways of increasing the expressiveness of the CEM Script DSL.
 
-[^4]: In CEM Script we are using a simplified version of model-based testing, that checks only 
+[^4]: In CEM Script we are using a simplified version of model-based testing, that checks only
 whether both the model and SUT succeed or fail.
 
-[^5]: The testing part of the CEM Script project can be found 
+[^5]: The testing part of the CEM Script project can be found
 [here](https://github.com/mlabs-haskell/cem-script/tree/master/src/Cardano/CEM/Testing).
 
 [^6]: For more ideas on how mutation testing can be used to test validators
