@@ -895,13 +895,13 @@ The unified testing feature was conceived as a solution to these problems.
 Let's list all the components we deal with when testing a dApp on Cardano
 and see how they play in the unified testing:
 
-1. An application under testing, which includes:
-    1.1. Smart contracts
-    1.2. Off-chain code operations, that build transactions (or their skeletons)
-    1.3. Glue code to call off-chain operations from UI/wallets
-2. A test suite, which includes:
-    2.1. Actions that can run operations in a test environment without UI
-    2.2. Test cases that consist of:
+* (1) An application under testing, which includes:
+    * (1.1) Smart contracts
+    * (1.2) Off-chain code operations, that build transactions (or their skeletons)
+    * (1.3) Glue code to call off-chain operations from UI/wallets
+* (2) A test suite, which includes:
+    * (2.1) Actions that can run operations in a test environment without UI
+    * (2.2) Test cases that consist of:
         * A prelude sequence of actions that prepare the state for test-case
         * A test condition to decide whether a test case pass
 
