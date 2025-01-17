@@ -5,7 +5,7 @@ Cardano | Written By Ilia Rodionov
 
 In this article, we look at testing with **CLB** -
 a Cardano emulator developed by MLabs.
-We show how CLB and related tools can be used in various testing approaches
+We show how CLB and related tools can be used in various testing scenarios
 when building dApps on Cardano.
 
 This article concludes our work on CLB Catalyst
@@ -14,10 +14,10 @@ We give an overview of CLB and showcase three examples of its use.
 This should give a reader a comprehensive overview of tasks
 that can be accomplished using a new member of MLabs' core tools family.
 
-We start our journey looking at `clb` library,
+We start our journey looking at the `clb` library,
 which is the core part of the emulator.
-Then we examine the case of **CEM Script** project,
-that demonstrates how standalone `clb` library can be used for
+Then we examine the case of the **CEM Script** project,
+that demonstrates how the standalone `clb` library can be used for
 a rather specific kind of _model-based_
 and _mutation-based_ property testing.
 
@@ -25,10 +25,9 @@ Then we present a more usual case that covers testing dApps combining
 CLB and [**Atlas PAB**](https://atlas-app.io/) which is very close to
 the testing approach of the CLB's predecessor - PSM library.
 
-Finally, we give an overview of the **node mode** of CLB emulator
+Finally, we give an overview of the **node mode** of the CLB emulator
 which is the most universal way to use it.
-Being language-agnostic, it is the fit for cases when CLB emulator
-is used in non-Haskell environments.
+Being language-agnostic, it is the only fit for non-Haskell environments.
 Particularly, we shortly introduce a case study of
 [CTL](https://github.com/Plutonomicon/cardano-transaction-lib) -
 a Purescript-based library for dApp development.
@@ -37,8 +36,8 @@ Let's commence!
 
 ## A bit of history
 
-Historically when Cardano entered Alonzo era
-and the introduction of Plutus language blazed the trail
+Historically when Cardano entered the Alonzo era
+and the introduction of the Plutus language blazed the trail
 to building dApps on Cardano
 there existed no usable emulator.
 The emulator from IOG's _Plutus Application Framework_ [^1]
@@ -54,12 +53,12 @@ It caught on as a primary testing tool
 and has been used for quite a long time.
 
 PSM was very lean in terms of dependency footprint and very fast.
-It gave accurate estimates for resource usage too
+It gave accurate estimates for resource usage 
 since it was based on the `plutus-ledger-api`.
 One peculiarity of PSM was their custom ledger state management,
 i.e. a simplified set of rules for handling transactions
 and stepping ledger's state.
-It was close to `cardano-ledger` rules, but not the same.
+It was close to `cardano-ledger` rules but not the same.
 
 This is where discrepancies with the real rules quickly began to accumulate
 as time went on, so PSM started to suffer from many issues which deteriorated
@@ -73,7 +72,7 @@ As the next step on the way of pushing PSM to new horizons,
 MLabs submitted a Catalyst
 [proposal](https://cardano.ideascale.com/c/cardano/idea/106705)
 focused on improving the existing PSM library.
-During the work on the first milestone we submitted a
+During the work on the first milestone, we came up with a
 [change request](https://drive.google.com/file/d/1b6A0w-YGZs1oGC9ZLPGgvl0LmFg2jLjl/view)
 which asked for a pivot towards the development of a new emulator called CLB,
 which stands for _Cardano ledger backend_ and pronounced /klʌb/.
@@ -83,44 +82,44 @@ which goes to great lengths to motivate that turn-around.
 
 ## Emulator core: `clb` library
 
-The core part of the emulator is Haskell `clb` library which is self-sufficient
+The core part of the emulator is the Haskell `clb` library which is self-sufficient
 for use cases that solely require a pure ledger state. Unlike PSM, CLB uses
 `cardano-ledger` to maintain the state which guarantees it behaves exactly
 the same way the real ledger does (being properly configured).
 
-The API provided by `clb` library is utterly simple
+The API provided by the `clb` library is utterly simple
 and mostly defined over types from `cardano-api`
 which makes the client code highly compatible with a real node.
 It implements a _pure state_ that holds a ledger instance
 that one can easily and cheaply spin up,
-getting access to corresponding signing keys that control genesis funds.
+getting access to corresponding signing keys that control initial funds.
 Among core supported operations:
-* transaction submitting
 * querying UTxO state
+* transaction submitting
 * jumping to a future slot
 
 To use such an API, the client should be able to build transactions,
-including coin selection stage and balancing.
+including coin selection and balancing.
 Though it is arguably not the most common case, we believe this ability is important,
 since it plays very well with the idea of modularity.
-On the one hand, one can use whatever tool for transaction building,
+That way one can use whatever tool for transaction building,
 with the core of the emulator being agnostic on the client's off-chain code.
-On the other hand, as was already mentioned one can easily switch from
-the emulator to a real node.
+At the same time as was already mentioned one can easily switch from
+the emulator to a real network.
 
-Being just a pure ledger state, `clb` library has many limitations.
+Being just a pure ledger state, the `clb` library has many limitations.
 Most importantly, the blockchain and consensus are not involved
 which means there is no notion of:
 * time, slots, and epochs
 * blocks
 
-The former poses a problem for testing, since quite often the logic relies
+The former poses a problem for testing since quite often the logic relies
 on time. Moreover, testing time-dependent contracts against a real network
 is also problematic without scaling validity intervals:
 waiting over even a non-significant span is prohibitively slow.
-Scaling also comes at some price and potentially could hide subtle bugs.
+Scaling also comes at a price and potentially could cover subtle bugs.
 
-Being a pure state, to alleviate this impediment `clb` offers
+Being a pure state, to alleviate this impediment the `clb` library offers
 a way to travel in the future
 instantaneously by specifying the target slot number and
 providing facilities to go forth and back between wall clock time and slots.
@@ -131,14 +130,14 @@ This approach significantly improves the readability of logs
 and simplifies debugging.
 
 For a more detailed description of the API please refer to the
-[CLB docs](https://mlabs-haskell.github.io/clb-docs/use/lib) web site.
+[CLB docs](https://mlabs-haskell.github.io/clb-docs/use/lib) website.
 
 ## CEM Script: CLB as a backend for mutation-based property testing
 
-The crucial property of CLB we wanted to preserve was speed
+The crucial property of CLB we wanted to preserve was the speed,
 since it becomes critical for property-based testing.
 In this section, we present the case of **CEM Script** project
-which brings an interesting example of how dApps on Cardano
+which brings up an interesting example of how dApps on Cardano
 could be tested and how CLB comes in handy in doing that.
 
 ### CEM Machines
@@ -182,17 +181,18 @@ of such a definition for a simple auctioning dApp.
 
 ### Detour: DSL to define CEM machines
 
-#### Building blocks
-
 In this section, we are exploring the approach for defining CEM machines within
 **CEM Script** project. We start with the simplest building blocks and move up to
 higher-level structures, going from the bottom to the top.
+ 
+#### Building blocks
 
 As we mentioned above, the DSL is used to generate both on-chain and off-chain
 components.
 
 **CEM Script** constraint language is based on `ConstraintDSL` GADT which
-allows expressing terms of the language (some constructors are elided for brevety):
+allows expressing terms of the language 
+(some constructors are elided for the brevety):
 
 ```haskell
 data ConstraintDSL script value where
@@ -216,7 +216,7 @@ data ConstraintDSL script value where
 From the definition, you can get the rough idea that one can lift constants
 into the language with `Pure`, access the machine state with `Ask`,
 doing deconstructions with `GetField`, build values with `UnsafeUpdateOfSpine`
-and lift **[Plutarch](TODO:)** functions with `LiftPlutarch`.
+and lift **Plutarch** functions with `LiftPlutarch`[^].
 
 DSL terms can be further specified as either being regular __values__ or __patterns__
 for pattern matching. The way those are used differs for on-chain and off-chain.
@@ -225,7 +225,7 @@ Here, `script` is an uninhabited type that is used to tie together
 different things associated with a particular script (machine),
 and `resolved` is a type-level `Bool` that differentiates
 source (`False`) and "compiled" (`True`) terms
-only within the realm of off-chain translation process:
+only within the realm of the off-chain translation process:
 
 ```haskell
 type family DSLValue (resolved :: Bool) script value where
@@ -1177,11 +1177,14 @@ to learn more about testing dApps with CTL and CLB.
 is officially archived, but the emulator budded off as a
 [standalone project](https://github.com/IntersectMBO/cardano-node-emulator).
 
-[^2]: As ["The Extended UTXO Model"](https://iohk.io/en/research/library/papers/the-extended-utxo-model/)
-paper explains, validators can be modeled as silghtly alternated
+[^2]: As the ["The Extended UTXO Model"](https://iohk.io/en/research/library/papers/the-extended-utxo-model/)
+paper explains validators can be modeled as slightly alternated
 [Mealy machines](https://en.wikipedia.org/wiki/Mealy_machine).
 
-[^3]: For more ideas on how mutation testing can be used to test validators
+[^3]: The ability to lift [Plutarch](https://github.com/Plutonomicon/plutarch-plutus) functions
+is one of the two ways of increasing the expressiveness of the CEM Script DSL. 
+
+[^4]: For more ideas on how mutation testing can be used to test validators
 on Cardano see Arnaud Bailly's article
 [Mutation-based TDD](https://abailly.github.io/posts/``mutation-testing.html).
 
