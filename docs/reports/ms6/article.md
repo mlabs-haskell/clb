@@ -40,7 +40,7 @@ Historically when Cardano entered the Alonzo era
 and the introduction of the Plutus language blazed the trail
 to building dApps on Cardano
 there existed no usable emulator.
-The emulator from IOG's _Plutus Application Framework_ [^1]
+The emulator from IOG's _Plutus Application Framework_[^1]
 didn't play well and later tended to fall behind
 the cadence of the next major Cardano releases.
 
@@ -144,7 +144,7 @@ could be tested and how CLB comes in handy in doing that.
 
 dApps on Cardano consist of validators also known as smart contracts, and a
 validator can be thought of as a state machine of a specific form
-called _Constraint Emitting Machines_ [^2].
+called _Constraint Emitting Machines_[^2].
 A valid transition in a CEM corresponds
 to a single valid transaction on the chain
 (though one transaction can span over several scripts).
@@ -192,7 +192,7 @@ components.
 
 **CEM Script** constraint language is based on `ConstraintDSL` GADT which
 allows expressing terms of the language 
-(some constructors are elided for the brevety):
+(some constructors are elided for brevity):
 
 ```haskell
 data ConstraintDSL script value where
@@ -216,11 +216,11 @@ data ConstraintDSL script value where
 From the definition, you can get the rough idea that one can lift constants
 into the language with `Pure`, access the machine state with `Ask`,
 doing deconstructions with `GetField`, build values with `UnsafeUpdateOfSpine`
-and lift **Plutarch** functions with `LiftPlutarch`[^].
+and lift **Plutarch** functions with `LiftPlutarch`[^3].
 
 DSL terms can be further specified as either being regular __values__ or __patterns__
 for pattern matching. The way those are used differs for on-chain and off-chain.
-That difference is captured by the following type families.
+The following type families capture that difference.
 Here, `script` is an uninhabited type that is used to tie together
 different things associated with a particular script (machine),
 and `resolved` is a type-level `Bool` that differentiates
@@ -305,8 +305,8 @@ by defining a corresponding CEM state machine.
 We are going to build a simple English auction application.
 Let's start with **states**.
 For any state, arbitrary (on-chain representable) data can be attached,
-and in our case, we are going to define and use `Bid` data type that contains
-the bid amount and the bidder public key:
+and in our case, we are going to define and use the `Bid` data type 
+that contains the bid amount and the bidder public key:
 
 ```haskell
 data Bid = MkBet
@@ -347,7 +347,7 @@ data SimpleAuctionTransition
 `Start` transition brings the starting zero bid already mentioned, whereas every
 `MakeBid` takes a new bid run by a bidder. Notice that transitions themselves
 don't reference states. They are bound together via constraints using a value of
-an underlying map within `CEMScriptSpec` type as a part of `CEMScript instance
+an underlying map within `CEMScriptSpec` type as a part of `CEMScript` instance
 (in practice smart constructors are used to make instances of `TxConstraint`
 not bare constructors we saw in the previous section):
 
@@ -385,8 +385,9 @@ not bare constructors we saw in the previous section):
         ...
 ```
 
-If we ignore the word __spine__ and an exotic operator `::=` in this code,
-it should be quite self-explaining. The first transition requires that a `seller`
+It should be self-explaining if we ignore the word __spine__ 
+and an exotic operator `::=` in this code. 
+The first transition requires that a `seller`
 (from script parameters, the part we omitted to keep the article shorter)
 should sign the transaction and spend `cMinLovelace`, and one output should go
 to the script, which is stated by `ownUtxo` with `NonStarted` state and
@@ -479,7 +480,7 @@ In contrast, the last transition `Buyout` shows up more tricks:
 ...
 ```
 
-Here we can see that two outputs go to bidder and seller with the `lot` and and
+Here we can see that two outputs go to the bidder and seller with the `lot` and and
 `bidAmount` correspondingly. From the on-chain perspective, it's not important where
 exactly `bidAmount` comes from - probably someone else can pay their money on
 behalf of the bidder.
@@ -500,7 +501,7 @@ and then augmenting it with mutations.
 How can we get assurance that the definition of the state machine we came up with
 is sound in terms of bugs which would potentially prevent liveness or lead to crashes?
 
-Probably, by far the greatest merit of CEM-based approach to developing dApps
+Probably, by far the greatest merit of the CEM-based approach to developing dApps
 we've just seen is the fact that its parts can easily be turned
 into an "ideal world" model for the application.
 Indeed, being given a list of possible transitions we can easily generate
@@ -510,7 +511,7 @@ those that "make sense".
 With a big enough number of meaningful scenarios at hand, we can execute
 them against the model and the real application
 and check that the both can handle them
-and even that they both do it the same way[^ TODO: this is not the case for now].
+and even that they both do it the same way[^3].
 This approach is widely known as __model-based testing__.
 
 Let's first focus on the question of how we can discern meaningful
@@ -570,9 +571,9 @@ meaningful way which is exactly the criterion of the transition's viability.
 So if can provide step (1) with the current state we will be able to know
 whether a particular transition could be valid. It means all we need to keep
 in the model is the machine state (plus some additions like initial parameters)
-which is captured by `ScriptState script` data type[^TODO: link to StateMachine.hs].
-Step (1) is implemented as `compileActionConstraints` function, so we can write
-`precondition` method using it:
+which is captured by `ScriptState script` data type[^5].
+Step (1) is implemented as `compileActionConstraints` function and we can write
+`precondition` method:
 
 ```haskell
 precondition
@@ -589,15 +590,17 @@ Now that we have the model, what is that __real application__ we mentioned?
 In the real world, it is an application deployed on the Cardano mainnet or testnet,
 but it is very ineffective even when it comes to more traditional testing.
 Private testnets are also cumbersome and slow.
-And it becomes infeasible when one needs to run thousands of scenarios
-like in our case. Here CLB comes into play.
+It becomes infeasible when one needs to run thousands of scenarios like we do. 
+Here CLB comes into play.
 Since we have the off-chain part that can build transactions being provided with
 a simple query layer we can use the bare `clb` library.
-In `quickcheck-dynamic` there exists a type class `RunModel` to represent a real
+In `quickcheck-dynamic` exists a type class `RunModel` to represent a real
 model you want to test. By wiring `clb` library methods into `RunModel` instance
-we can accomplish our goal. At its core, there is one method called `perform`
-with a rather convoluted signature which we are omitting here though an interested
-reader can find it in **CEM Script** sources [TODO: links].
+we can define how to execute actions against the real system 
+(so the name RunModel is a bit misnomer).
+At its core, there is one method called `perform`
+with a rather convoluted signature which we are omitting here.
+An interested reader can find it in **CEM Script** sources[^5].
 
 Finally, we can define the property which states that any meaningful sequence
 should succeed:
@@ -640,12 +643,13 @@ do action $ SetupConfig
    pure ()
 ...
 
-
 The machine terminated because of an error...
 
 [ "Matched spine: BuyoutSpine"
 , "Checking transition BuyoutSpine"
-, "Checking constraint Utxo {kind = Out, spec = UserAddress Ask Params.seller, value = somePlutarchCode (somePlutarchCode (Pure (3000000))) (Ask Params.lot)}"
+, "Checking constraint Utxo { kind = Out
+    , spec = UserAddress Ask Params.seller
+           , value = somePlutarchCode (somePlutarchCode (Pure (3000000))) (Ask Params.lot)}"
 , "Constraint check failed"])]))
 ```
 
@@ -718,7 +722,7 @@ to cover also negative cases.
 
 #### Mutation-based property testing: negative scenarios and more
 
-Now that we have checked all meaningful sequences, we can go a bit further.
+Now that we have checked all meaningful sequences, we can go further.
 All sequences we used so far were positive in the sense that they
 were obtained from the definition of the CEM machine.
 Now, we'd like to be sure that the same sequences will fail if we introduce
@@ -736,7 +740,7 @@ should stop working.
 
 As a side note, we can go down to the level of individual constraints
 and start tweaking them individually with specific strategies
-but this is out of the scope of the article [^3].
+but this is out of the scope of the article[^6].
 
 So how can we add mutations to the test suite we already built?
 Let's start with defining the following data type
@@ -869,7 +873,7 @@ in a real application, we can conclude that both behave the same way
 
 ## Unified testing with Atlas
 
-For the next use case of testing dApps with CLB emulator, we are going to explore
+For the next use case of testing dApps with CLB, we will explore
 a more traditional approach. It can be thought of as a replacement for PSM.
 The latter had its own machinery for building transactions.
 This fact caused significant duplication of work
@@ -934,7 +938,7 @@ This highlights an important distinction in the way they work:
 * `mkTestFor` spawns a new instance of CLBb on every call and every test case is
 run in a fresh (new) ledger state.
 * `mkPrivnetTestFor` is supposed to be run inside a helper function
-`withPrivnet` which spins up one and only private testnet and executes
+`withPrivnet` which spins up one and the only private testnet and executes
 the whole test suite using it.
 
 We are going to write a test that simply sends 100 ADA from
@@ -1071,14 +1075,14 @@ sys  	0m2.654s
 
 ## Emulating cardano-node: betting dApp on CTL
 
-### Providing access to emulator from non-Haskell environments
+### Access emulator from non-Haskell environments
 
 The cases we covered so far pertained to Haskell land, so we were able
 to use either a `clb` library alone or its combination with Atlas PAB.
-In this section we are taking a journey to Purescript and
+In this section, we are taking a journey to Purescript and
 [CTL](https://github.com/Plutonomicon/cardano-transaction-lib) library.
-Whereas PAB like Atlas are meant to run on server side,
-CTL is a set of components for bulding dApps that can be run entirely
+Whereas PABs like Atlas are meant to run on the server side,
+CTL is a set of components for building dApps that can be run entirely
 in a browser.
 
 Like PABs, CTL has the notion of provider (known as `QueryHandle`)
@@ -1088,22 +1092,22 @@ supported out-of-the-box) and a local backend known as
 **KON** (Kupo + Ogmios + Node) can be used to run applications
 as well as tests.
 
-To make CLB emulator accessible to CTL (and potentially other frameworks)
+To make the CLB emulator accessible to CTL (and potentially other frameworks)
 we had two options:
 * Mimic the node in a limited way, and keep using Kupo and Ogmios and
-the exisiting local backend provider.
+the existing local backend provider.
 * Roll out a custom `QueryHandle` implementation.
 
 We opted for the former approach mostly due to its consistency and compatibility
 reusing existing parts and because `QueryHandle` API was (and is still)
 not standardized, so it would be not compatible with other frameworks
 besides CTL.
-CTL talks to the emulator process via Ogmios, and query the sate using Kupo,
+CTL talks to the emulator process via Ogmios, and queries the sate using Kupo,
 though one can work directly using mini-protocols if needed.
 
 To mimic the node there is an executable called `cardano-node-socket-emulator`
 based on the `clb` library we've already seen that is supposed to be used
-in lieu of a real `cardano-node` executable when doing testing.
+instead of a real `cardano-node` executable when doing testing.
 This executable is compatible (to some extent) with `cardano-node` in terms
 of CLI and maintains an IPC socket that implements a subset
 of __Ouroboros mini-protocols__ needed:
@@ -1118,41 +1122,41 @@ required mechanisms run:
 * A trivial block-producing procedure that forges blocks
 from the content of the emulator's mempool.
 
-The emulator doesn't use consensus and any sort of inter-node communication
-which helps keeping it pretty fast in comparison with a private testnet.
+The emulator doesn't use consensus or any sort of inter-node communication
+which helps keep it fast in comparison with a private testnet.
 
 ### Integrating emulator binary
 
 The environment that uses the emulator should run it to spin up
 a degenerated testnet that consists of one emulator node
-which is in change of producing blocks and all other actions.
+which is in charge of producing blocks and all other actions.
 Though the number of commands and options the emulator takes
-much less smaller then for a real `cardano-node`,
+much smaller than for a real `cardano-node`,
 it is still problematic to do that manually.
-For this end we are using the same approach we use for a real testnet,
+For this end, we are using the same approach we use for a real testnet,
 namely `cardano-testnet` from `cardano-node`.
-Under the hood this tool uses `cardano-api` to genereate a number of
+Under the hood, this tool uses `cardano-api` to generate a number of
 genesis keys, testnet configuration including genesis files
-based on user's preferences and run a set of nodes
+based on the user's preferences and run a set of nodes
 over generated configuration.
 `CARDANO_NODE` environment variable can be used
 to specify another binary to run, so we can easily plug in the emulator.
 
-The emulator binary itself can be pulled into your project usign Nix flakes,
+The emulator binary itself can be pulled into your project using Nix flakes,
 please refer to [clb-docs](https://mlabs-haskell.github.io/clb-docs/getting-started#using-clb-executable-with-nix) website.
 
 ### Unified testing in CTL
 
 The ability to switch between a private testnet backed by real nodes and
 emulated network backed by the emulator without changing the code of
-an application or a test suire gives developers some degree of freedom.
+an application or a test suite gives developers some degree of freedom.
 An emulated network works much slower than a built-in `clb` state but
 it is still much faster than a private testnet.
 
 Another important difference to bear in mind is that it's not possible
 anymore to quickly travel in time. Awaiting for a particular slot will
-take some time based on slot's duration. Though you can keep the length
-of slots very short to compensate this downside.
+take some time based on the slot's duration. 
+However, the length of slots can be very short to compensate for that.
 
 To showcase this approach works we reimplemented the betting dApp from
 Atlas [using CTL](https://github.com/Plutonomicon/cardano-transaction-lib/pull/1655).
@@ -1163,13 +1167,12 @@ to learn more about testing dApps with CTL and CLB.
 
 ## Useful Links
 
-* [CLB repository]() on GitHub
-* [CLB docs web-site]()
-* [Atlas repository]() on GitHub
-* [Atlas docs web-site]()
-* [CTL]()
-* [PSM repository]() on GitHub (archived)
-* [The extended UTxO model] ()
+* [CLB repository](https://github.com/mlabs-haskell/clb) on GitHub
+* [CLB docs](https://mlabs-haskell.github.io/clb-docs) website
+* [Atlas repository](https://github.com/geniusyield/atlas) on GitHub
+* [Atlas docs](https://atlas-app.io/) website
+* [CTL repository](https://github.com/Plutonomicon/cardano-transaction-lib) on GitHub
+* [PSM repository](https://github.com/mlabs-haskell/plutus-simple-model) on GitHub (archived)
 
 ---
 
@@ -1178,14 +1181,20 @@ is officially archived, but the emulator budded off as a
 [standalone project](https://github.com/IntersectMBO/cardano-node-emulator).
 
 [^2]: As the ["The Extended UTXO Model"](https://iohk.io/en/research/library/papers/the-extended-utxo-model/)
-paper explains validators can be modeled as slightly alternated
+paper explains, on-chain validators can be modeled as slightly alternated
 [Mealy machines](https://en.wikipedia.org/wiki/Mealy_machine).
 
 [^3]: The ability to lift [Plutarch](https://github.com/Plutonomicon/plutarch-plutus) functions
 is one of the two ways of increasing the expressiveness of the CEM Script DSL. 
 
-[^4]: For more ideas on how mutation testing can be used to test validators
+[^4]: In CEM Script we are using a simplified version of model-based testing, that checks only 
+whether both the model and SUT succeed or fail.
+
+[^5]: The testing part of the CEM Script project can be found 
+[here](https://github.com/mlabs-haskell/cem-script/tree/master/src/Cardano/CEM/Testing).
+
+[^6]: For more ideas on how mutation testing can be used to test validators
 on Cardano see Arnaud Bailly's article
-[Mutation-based TDD](https://abailly.github.io/posts/``mutation-testing.html).
+[Mutation-based TDD](https://abailly.github.io/posts/mutation-testing.html).
 
 Tags: blockchain | cardano | testing
