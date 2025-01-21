@@ -17,18 +17,20 @@ that can be accomplished using a new member of MLabs' core tools family.
 We start our journey looking at the `clb` library,
 which is the core part of the emulator.
 
-Then we examine the case of
-[**CEM Script**](https://github.com/mlabs-haskell/cem-script)
-project,
-that demonstrates how standalone `clb` library can be used for
-a rather specific kind of __model-based__
+Next, we examine the case of
+[**CEM Script**](https://github.com/mlabs-haskell/cem-script),
+another project of MLabs [funded in Catalyst Fund10](https://cardano.ideascale.com/c/cardano/idea/106740).
+It is a declarative SDK for building dApps on Cardano
+using specifications of so-called CEM machines.
+This use case demonstrates how the standalone `clb` library
+can be used for a rather specific kind of __model-based__
 and __mutation-based__ property testing.
 
 Then we present a more usual case that covers testing dApps combining
 CLB and [**Atlas PAB**](https://atlas-app.io/) which is very close to
 the testing approach of the CLB's predecessor - PSM library.
 
-Finally, we give an overview of the __node mode__ of CLB emulator
+Finally, we give an overview of the __node mode__ of the CLB emulator
 which is the most universal way to use it.
 Being language-agnostic, it is the only fit for non-Haskell environments.
 Particularly, we shortly introduce a case study of
@@ -139,7 +141,7 @@ For a more detailed description of the API please refer to the
 
 The crucial property of CLB we wanted to preserve was the speed,
 since it becomes critical for property-based testing.
-In this section, we present the case of CEM Script project
+In this section, we present the case of the CEM Script project
 which brings up an interesting example of how dApps on Cardano
 could be tested and how CLB comes in handy in doing that.
 
@@ -220,6 +222,35 @@ From the definition, you can get the rough idea that one can lift constants
 into the language with `Pure`, access the machine state with `Ask`,
 doing deconstructions with `GetField`, build values with `UnsafeUpdateOfSpine`
 and lift **Plutarch** functions with `LiftPlutarch`[^3].
+
+The notion of `Spine` that showed up in the code we've just seen in the name
+of `UnsafeUpdateOfSpine` constructor is a simple concept we should know
+about. Spines are auxiliary data types mostly derived automatically to keep
+only constructor names and forget the content.
+Say, we can define a data type like:
+
+```haskell
+data Transition
+  = Create
+  | MakeBid
+      { bid :: Bid
+      }
+  ...
+```
+
+Then the corresponding spine data type would look like this:
+
+```haskell
+data TransitionSpine
+  = CreateSpine
+  | MakeBidSpine
+  ...
+```
+
+Spines are very useful since quite often there is a need to refer to the
+constructor without knowing their content - exactly the task solved by spine
+data types. So you can mentally translate `Spine` suffix as a mark that
+indicates that a constructor or a function works with constructors only.
 
 DSL terms can be further specified as either being regular __values__ or __patterns__
 for pattern matching. The way those are used differs for on-chain and off-chain.
@@ -402,7 +433,7 @@ diagram can be generated using CEM Script.
 Initial and final states are represented on diagrams explicitly due to `graphviz`
 limitations, as we know they are virtual and don't exist:
 
-TODO: image: auction-state-graph.svg
+![Auction example state diagram](https://github.com/mlabs-haskell/cem-script/blob/master/docs/auction-state-graph.svg)
 
 #### The rest of transitions
 
@@ -741,9 +772,14 @@ the result should remain the same.
 2. All non-noop constraints are important, if we remove any of them a sequence
 should stop working.
 
-As a side note, we can go down to the level of individual constraints
-and start tweaking them individually with specific strategies
-but this is out of the scope of the article[^6].
+Potentially we can go down to the level of individual constraints
+and start tweaking them individually (out of the scope now).
+
+Notice, that the fact that mutations are based on the high-level
+definition of the CEM machine and not on the low-level definition
+of a transaction allows the generation of important mutations without
+any hassle and digging into parts of the transactions - approach
+generally used in the absence of the definition[^6].
 
 So how can we add mutations to the test suite we already built?
 Let's start with defining the following data type
@@ -1167,6 +1203,12 @@ Atlas [using CTL](https://github.com/Plutonomicon/cardano-transaction-lib/pull/1
 Take a look at [CTL documentation](https://github.com/Plutonomicon/cardano-transaction-lib/blob/develop/doc/cardano-testnet-testing.md)
 to learn more about testing dApps with CTL and CLB.
 
+## Call-to-action!
+
+If you find any ideas from this article interesting or relevant \
+to your project &ndash; please feel free to contact us -
+we are keen on applying our expertise
+to help our customers hit their goals.
 
 ## Useful Links
 
@@ -1196,8 +1238,7 @@ whether both the model and SUT succeed or fail.
 [^5]: The testing part of the CEM Script project can be found
 [here](https://github.com/mlabs-haskell/cem-script/tree/master/src/Cardano/CEM/Testing).
 
-[^6]: For more ideas on how mutation testing can be used to test validators
-on Cardano see Arnaud Bailly's article
-[Mutation-based TDD](https://abailly.github.io/posts/mutation-testing.html).
+[^6]: This is what many tools are doing - see Arnaud Bailly's article
+[Mutation-based TDD](https://abailly.github.io/posts/mutation-testing.html) or Tweag's [`cooked-validators`](https://github.com/tweag/cooked-validators).
 
-Tags: blockchain | cardano | testing
+Tags: blockchain | cardano | testing | core tooling
