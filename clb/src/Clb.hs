@@ -1,32 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
 
-{-
-CLB emulator notes
-
-CLB emulator can be used in two main modes of operation:
-  - as a Haskell library
-  - as a cardano-node emualator
-
-These two modes have different behaviour.
-
-In the library mode the emulator just maintains the ledger state.
-Neither is there notion of time, nor blocks.
-The genesis is also absent and a user is expected
-to provide initial fund distribution (LINK).
-When a transaction comes in, it's validated against the state.
-If it's valid then the state is immediately cranked, next slot is set,
-and the transaction is discarded.
-The only information that is preserved is its datums.
-If the transaction is invalid - nothing happens, just a negative
-validation result with the reason is returned to the submitter.
-
-In the cardano-node emulator mode (AKA socket mode, node mode)
-things get more entangled.
-A mempool comes into play along with so-called cached state.
-A thread to count slots emulates the consensus.
-...
-
--}
 module Clb (
   -- * Parameters
   X.defaultBabbageClbConfig,
@@ -36,7 +9,7 @@ module Clb (
   Clb,
   ClbT (..),
 
-  -- * CLB internals (revise)
+  -- * CLB State
   ClbState (..),
   EmulatedLedgerState (..),
   chainState,
@@ -50,6 +23,10 @@ module Clb (
   initClb,
 
   -- * Actions
+
+  -- ** UTxO set
+  currentUtxoState,
+  getUtxosAt,
   txOutRefAt,
   txOutRefAtPaymentCred,
 
@@ -60,18 +37,16 @@ module Clb (
   submitTx,
   validateTx,
 
-  -- * Querying
-  getClbConfig,
+  -- ** Working with slots
   getCurrentSlot,
-  getUtxosAt,
-  currentUtxoState,
+  waitSlot,
+  modifySlot,
+
+  -- ** Parameters and configuration
   getEpochInfo,
   getGlobals,
   getStakePools,
-
-  -- * Working with time/slotss
-  waitSlot,
-  modifySlot,
+  getClbConfig,
 
   -- * Working with logs
   LogEntry (..),
@@ -103,7 +78,8 @@ module Clb (
   -- * key utils
   intToKeyPair,
   intToCardanoSk,
-  -- tx utility functions
+
+  -- * tx utility functions
   txWitnessDatums,
   txInlineDatums,
 )
@@ -251,6 +227,7 @@ data ClbState era = ClbState
   , _clbConfig :: !(ClbConfig era)
   -- ^ The configuration (supposed to be read-only)
   -- TODO: remove non-state parts like ClbConfig from the state?
+  -- https://github.com/mlabs-haskell/clb/issues/63
   }
 
 -- deriving stock (Show)
@@ -431,9 +408,7 @@ logError msg = do
   logInfo $ LogEntry Error msg
   logFail $ GenericFail msg
 
-{- | Add a non-error log enty.
-FIXME: rename to logEntry
--}
+-- | Add a non-error log enty.
 logInfo :: (Monad m) => LogEntry -> ClbT era m ()
 logInfo le = do
   C.SlotNo slotNo <- getCurrentSlot

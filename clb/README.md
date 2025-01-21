@@ -1,4 +1,3 @@
-# tbd
+# CLB Haskell library
 
-This document will describe `clb` library - a fast Cardano emulator for use
-within Haskell projects.
+Read more about CLB as-a-library on CLB documentation [web-site](https://mlabs-haskell.github.io/clb-docs/use/lib).
