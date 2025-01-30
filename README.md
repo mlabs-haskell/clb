@@ -10,3 +10,5 @@ in Fund10 of [Project Catalyst](https://milestones.projectcatalyst.io/projects/1
 
 In combination with [Atlas](https://github.com/geniusyield/atlas)
 CLB is a complete replacement to decomissioned [PSM](https://github.com/mlabs-haskell/plutus-simple-model) library.
+
+Check out an article on MLabs website on [testing dApps on Cardano](https://www.mlabs.city/blog/testing-dapps-on-cardano-with-clb-emulator) with CLB.
