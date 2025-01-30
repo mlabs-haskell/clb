@@ -15,7 +15,7 @@ synopsis:
   The Cardano emulator that "just works" AKA Cardano Ledger Backend (CLB),
   pronounced /klʌb/.  A new gen of PSM.
 
-tested-with:     GHC ==9.6.3
+tested-with:     GHC ==9.6.6
 
 source-repository head
   type:     git

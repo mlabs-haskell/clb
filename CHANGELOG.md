@@ -7,11 +7,8 @@ and this project adheres to the [Haskell Package Versioning Policy](https://pvp.
 
 ## [Unreleased]
 
-## [0.1.0] - 2024-03-05 (planned)
+## [0.1.0] - 2025-01-30
 
-### Added (plan)
-
-- Cardano ledger based emulator.
+- Cardano ledger-based emulator as-a-library.
 - Integration with GeniusYield's Atlas PAB.
-- Lightweight mode (no ledger checks at all, just simplified UTXO rule) (?)
-- PR to Atlas (add CLB, remove PSM)
+- Standalone emulator excutable compatible.
