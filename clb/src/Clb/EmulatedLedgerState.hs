@@ -56,6 +56,7 @@ initialState params tc =
           { _ledgerEnv =
               L.LedgerEnv
                 { L.ledgerSlotNo = 0
+                , L.ledgerEpochNo = Nothing
                 , L.ledgerIx = minBound
                 , L.ledgerPp = params
                 , L.ledgerAccount = L.AccountState (L.Coin 0) (L.Coin 0)

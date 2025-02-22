@@ -30,6 +30,7 @@ import Control.Concurrent (
   readMVar,
  )
 import Control.Concurrent.Async (async, wait)
+import Network.Mux (Mode (ResponderMode))
 import Control.Concurrent.STM (
   STM,
   TChan,
@@ -119,10 +120,9 @@ import Ouroboros.Network.Block qualified as O
 import Ouroboros.Network.IOManager (withIOManager)
 import Ouroboros.Network.Mux (
   MiniProtocolCb (MiniProtocolCb),
-  MuxMode (ResponderMode),
   RunMiniProtocol (ResponderProtocolOnly),
   RunMiniProtocolWithMinimalCtx,
-  mkMiniProtocolCbFromPeer,
+  mkMiniProtocolCbFromPeer, mkMiniProtocolCbFromPeerSt,
  )
 import Ouroboros.Network.NodeToClient (
   NodeToClientProtocols (..),
@@ -168,6 +168,7 @@ import Ouroboros.Network.Socket (
  )
 import Plutus.Monitoring.Util (runLogEffects)
 import PlutusLedgerApi.V1 qualified as PV1
+import qualified Ouroboros.Network.Protocol.LocalStateQuery.Type as Query
 
 -- -----------------------------------------------------------------------------
 -- Server API
@@ -432,10 +433,11 @@ stateQuery ::
   RunMiniProtocolWithMinimalCtx 'ResponderMode LocalAddress LBS.ByteString IO Void ()
 stateQuery trace mvChainState =
   ResponderProtocolOnly $
-    mkMiniProtocolCbFromPeer $
+    mkMiniProtocolCbFromPeerSt $
       const
         ( nullTracer
         , stateQueryCodec
+        , Query.StateIdle
         , Query.localStateQueryServerPeer
             (stateQueryServer trace mvChainState)
         )
