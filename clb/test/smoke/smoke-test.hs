@@ -1,6 +1,6 @@
 module Main where
 
-import Cardano.Api.Value (lovelaceToValue)
+import Cardano.Api (lovelaceToValue)
 import Cardano.Ledger.Coin (Coin (Coin))
 
 import Clb (

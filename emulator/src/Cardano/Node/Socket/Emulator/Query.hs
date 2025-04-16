@@ -6,14 +6,12 @@
 
 module Cardano.Node.Socket.Emulator.Query (HandleQuery (..)) where
 
-import Cardano.Api qualified as Api
 import Cardano.Api.Internal.Eras qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Data.Trace (Trace)
 import Cardano.Ledger.Api.Transition qualified as L
 import Cardano.Ledger.BaseTypes (epochInfo)
 import Cardano.Ledger.Shelley.LedgerState qualified as L
-import Cardano.Ledger.UTxO qualified as L
 import Cardano.Node.Socket.Emulator.Types (
   AppState (..),
   EmulatorMsg,
@@ -49,10 +47,11 @@ import Data.SOP.NonEmpty qualified as Ouroboros
 import Data.SOP.Strict (NP (Nil, (:*)), NS (S, Z))
 import Data.Set qualified as Set
 import Ouroboros.Consensus.Block (EpochSize, GenesisWindow (..))
-import Ouroboros.Consensus.Cardano.Block (BlockQuery (..), CardanoBlock)
+import Ouroboros.Consensus.Byron.Ledger.Block qualified as Block
+import Ouroboros.Consensus.Cardano.Block (BlockQuery (..), CardanoBlock, CardanoShelleyEras)
 import Ouroboros.Consensus.HardFork.Combinator (QueryHardFork (..))
 import Ouroboros.Consensus.HardFork.Combinator qualified as Consensus
-import Ouroboros.Consensus.HardFork.History (EraParams (..))
+import Ouroboros.Consensus.HardFork.History (EraParams (..), Shape (Shape))
 import Ouroboros.Consensus.HardFork.History qualified as Ouroboros
 import Ouroboros.Consensus.HardFork.History.Summary (
   Bound (..),
@@ -125,13 +124,47 @@ handleQueryConwayEra trace state q =
             logInfo $ "Tip is: " <> show ret
             pure ret
       query@GetChainPoint -> do
-        logInfo $ "Query was received (5): " ++ show query
+        logInfo $ "Query was received (6): " ++ show query
         ret <- getChainPointTime state
         logInfo $ "Chain point time is: " <> show ret
         pure ret
+      query@GetLedgerConfig -> do
+        logInfo $ "Query was received (7): " ++ show query
+        as <- liftIO $ readMVar state
+        let config = as ^. (socketEmulatorState . clbState . clbConfig)
+
+            oneP =
+              eraParams $
+                Ouroboros.nonEmptyHead $
+                  Ouroboros.getSummary $
+                    skipSummary Ouroboros.initBound emulatorEpochSize (slotLength config) emulatorGenesisWindow
+            lastP =
+              eraParams $
+                Ouroboros.nonEmptyHead $
+                  Ouroboros.getSummary $
+                    neverForksSummary emulatorEpochSize (slotLength config) emulatorGenesisWindow
+
+            ret :: Consensus.HardForkLedgerConfig (Block.ByronBlock : CardanoShelleyEras StandardCrypto)
+            ret =
+              Consensus.HardForkLedgerConfig
+                { Consensus.hardForkLedgerConfigShape =
+                    Shape $ Ouroboros.Exactly $ K oneP :* K oneP :* K oneP :* K oneP :* K oneP :* K oneP :* K lastP :* Nil
+                , Consensus.hardForkLedgerConfigPerEra =
+                    Consensus.PerEraLedgerConfig
+                      ( Consensus.WrapPartialLedgerConfig _
+                          :* Consensus.WrapPartialLedgerConfig _
+                          :* Consensus.WrapPartialLedgerConfig _
+                          :* Consensus.WrapPartialLedgerConfig _
+                          :* Consensus.WrapPartialLedgerConfig _
+                          :* Consensus.WrapPartialLedgerConfig _
+                          :* Consensus.WrapPartialLedgerConfig _
+                          :* Nil
+                      )
+                }
+        pure ret
 
 queryIfCurrentConway ::
-  (block ~ Shelley.ShelleyBlock (Praos StandardCrypto) (ConwayEra StandardCrypto)) =>
+  (block ~ Shelley.ShelleyBlock (Praos StandardCrypto) ConwayEra) =>
   BlockQuery block result ->
   ClbT C.ConwayEra IO result
 queryIfCurrentConway = \case
@@ -214,11 +247,6 @@ slotLength :: ClbConfig era -> SlotLength
 slotLength ClbConfig {clbConfigSlotConfig} =
   mkSlotLength $ posixTimeToNominalDiffTime $ POSIXTime $ scSlotLength clbConfigSlotConfig
 
--- Helper Functions
-
-deriving newtype instance Semigroup (C.UTxO era)
-deriving newtype instance Monoid (C.UTxO era)
-
 -- | Find an unspent transaction output (using the Ledger type) by the 'TxIn' that spends it.
 lookupUTxO :: C.TxIn -> L.UTxO (C.CardanoLedgerEra C.ConwayEra) -> Maybe (C.TxOut C.CtxUTxO C.ConwayEra)
 lookupUTxO i index = C.fromShelleyTxOut C.ShelleyBasedEraConway <$> Map.lookup (C.toShelleyTxIn i) (L.unUTxO index)
@@ -230,5 +258,5 @@ singletonUTxO txIn txOut = C.UTxO $ Map.singleton txIn txOut
 -- | Query the unspent transaction outputs at the given transaction inputs.
 utxosAtTxIns :: (Monad m, Foldable f) => f C.TxIn -> ClbT C.ConwayEra m (C.UTxO C.ConwayEra)
 utxosAtTxIns txIns = do
-  idx <- use (chainState . ledgerState . L.lsUTxOStateL . L.utxosUtxoL)
+  idx <- use (chainState . ledgerState . L.lsUTxOStateL . L.utxoL)
   pure $ foldMap (\txIn -> maybe mempty (singletonUTxO txIn) $ lookupUTxO txIn idx) txIns

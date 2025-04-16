@@ -19,13 +19,11 @@
 -- | This module exports data types for logging, events and configuration
 module Cardano.Node.Socket.Emulator.Types where
 
-import Cardano.Api (ConwayEra, lovelaceToValue)
+import Cardano.Api (AddressInEra, ConwayEra, lovelaceToValue)
 import Cardano.Api qualified as C
-import Cardano.Api.Address (AddressInEra)
 import Cardano.BM.Data.Trace (Trace)
 import Cardano.Binary qualified as CBOR
 import Cardano.Chain.Slotting (EpochSlots (..))
-import qualified Network.TypedProtocol.Stateful.Codec as Stateful
 import Cardano.Ledger.Api.Transition (EraTransition)
 import Cardano.Ledger.Block qualified as CL
 import Cardano.Ledger.Core qualified as Core
@@ -89,6 +87,7 @@ import Data.Time.Format.ISO8601 qualified as F
 import Data.Time.Units (Millisecond)
 import GHC.Generics (Generic)
 import Network.TypedProtocol.Codec (Codec)
+import Network.TypedProtocol.Stateful.Codec qualified as Stateful
 import Ouroboros.Consensus.Byron.Ledger qualified as Byron
 import Ouroboros.Consensus.Cardano.Block (CardanoBlock, CodecConfig (..))
 import Ouroboros.Consensus.Cardano.Block qualified as OC
@@ -130,7 +129,6 @@ import Test.Cardano.Ledger.Shelley.Constants (defaultConstants)
 import Test.Cardano.Ledger.Shelley.Generator.Presets (coreNodeKeys)
 import Test.Cardano.Ledger.Shelley.Serialisation.EraIndepGenerators ()
 import Test.Cardano.Protocol.TPraos.Create (mkBlock, mkOCert)
-import qualified Cardano.Ledger.Shelley.Core as CL
 
 {- | In addition to state handled by CLB emulator as a library ('ClbState')
 this data type introduces additional things that are involved when the
@@ -519,7 +517,7 @@ toCardanoBlock ::
   Ouroboros.Tip (CardanoBlock StandardCrypto) -> Block ConwayEra -> IO (CardanoBlock StandardCrypto)
 toCardanoBlock Ouroboros.TipGenesis _ = error "toCardanoBlock: TipGenesis not supported"
 toCardanoBlock (Ouroboros.Tip curSlotNo _ curBlockNo) block = do
-  prevHash <- generate (arbitrary :: Gen (HashHeader StandardCrypto))
+  prevHash <- generate (arbitrary :: Gen HashHeader)
   let allPoolKeys = snd $ head $ coreNodeKeys defaultConstants
       kesPeriod = 1
       keyRegKesPeriod = 1
@@ -555,7 +553,7 @@ toCardanoBlock (Ouroboros.Tip curSlotNo _ curBlockNo) block = do
   pure $ OC.BlockConway $ Shelley.mkShelleyBlock $ CL.Block (translateHeader hdr1) bdy
 
 fromCardanoBlock :: CardanoBlock StandardCrypto -> Block ConwayEra
-fromCardanoBlock (OC.BlockConway (Shelley.ShelleyBlock (CL.Block _ txSeq) _)) = map (OnChainTx . unsafeMakeValidated) . toList $ CL.fromTxSeq txSeq
+fromCardanoBlock (OC.BlockConway (Shelley.ShelleyBlock (CL.Block _ txSeq) _)) = map (OnChainTx . unsafeMakeValidated) . toList $ Core.fromTxSeq txSeq
 fromCardanoBlock _ = []
 
 addTxToPool :: CardanoTx era -> SocketEmulatorState era -> SocketEmulatorState era

@@ -99,9 +99,9 @@ import Cardano.Ledger.Api.Transition (EraTransition)
 import Cardano.Ledger.BaseTypes (Globals)
 import Cardano.Ledger.BaseTypes qualified as L
 import Cardano.Ledger.Core qualified as Core
+import Cardano.Ledger.Hashes qualified as L
 import Cardano.Ledger.Keys qualified as L
 import Cardano.Ledger.Plutus.TxInfo (transCred, transDataHash, transTxIn)
-import Cardano.Ledger.SafeHash qualified as L
 import Cardano.Ledger.Shelley.API qualified as L hiding (TxOutCompact)
 import Cardano.Ledger.Shelley.Core (EraRule)
 import Cardano.Ledger.Shelley.LedgerState qualified as L
@@ -137,9 +137,10 @@ import Control.Monad.Identity (Identity)
 import Control.Monad.Reader (runReader)
 import Control.Monad.State (MonadState, StateT, gets, modify, modify', runState)
 import Control.Monad.Trans (MonadIO, MonadTrans)
-import Control.State.Transition (SingEP (..), globalAssertionPolicy)
+import Control.State.Transition (STS (BaseM), SingEP (..), globalAssertionPolicy)
 import Control.State.Transition.Extended (
   ApplySTSOpts (..),
+  STS (Environment, Signal, State),
   TRC (..),
   ValidationPolicy (..),
   applySTSOptsEither,
@@ -150,12 +151,15 @@ import Data.Function (on)
 import Data.List
 import Data.Map qualified as M
 
+import Cardano.Ledger.Binary (Interns, Share)
 import Cardano.Ledger.State (InstantStake)
 import Data.Maybe (mapMaybe)
 import Data.Sequence (Seq (..))
 import Data.Sequence qualified as Seq
 import Data.Set (Set)
 import Data.Text (Text)
+import Data.Type.Ord (type (<=))
+import GHC.TypeNats (CmpNat)
 import PlutusLedgerApi.V1 qualified as PV1 (
   BuiltinData,
   Credential,
@@ -334,7 +338,7 @@ initClb ::
   -- TODO: Either (Api.Value, Api.Value) [(L.Addr L.StandardCrypto, L.Coin)] would be more accurate
   Api.Value ->
   Api.Value ->
-  Maybe [(L.Addr L.StandardCrypto, L.Coin)] ->
+  Maybe [(L.Addr, L.Coin)] ->
   ClbState era
 initClb
   cfg@ClbConfig {clbConfigProtocol = pparams, clbConfigConfig = tc}
@@ -357,15 +361,15 @@ initClb
         Nothing -> L.UTxO $ M.fromList $ mkWalletGenesis walletFunds <$> [1 .. 10]
 
       mkGenesis ::
-        [((L.Addr L.StandardCrypto, L.Coin), Integer)] ->
-        [(L.TxIn L.StandardCrypto, Core.TxOut (C.ShelleyLedgerEra era))]
+        [((L.Addr, L.Coin), Integer)] ->
+        [(L.TxIn, Core.TxOut (C.ShelleyLedgerEra era))]
       mkGenesis = fmap $
         \((a, c), i) ->
           ( L.mkTxInPartial genesisTxId i
           , L.mkBasicTxOut a $ mkAdaValue (shelleyBasedEra @era) c
           )
 
-      mkWalletGenesis :: Api.Value -> Integer -> (L.TxIn L.StandardCrypto, Core.TxOut (C.ShelleyLedgerEra era))
+      mkWalletGenesis :: Api.Value -> Integer -> (L.TxIn, Core.TxOut (C.ShelleyLedgerEra era))
       mkWalletGenesis walletFund wallet =
         ( L.mkTxInPartial genesisTxId wallet
         , L.mkBasicTxOut
@@ -373,11 +377,11 @@ initClb
             (C.toLedgerValue (maryBasedEra @era) walletFund)
         )
 
-      mkAddr' :: TL.KeyPair 'L.Payment L.StandardCrypto -> L.Addr L.StandardCrypto
-      mkAddr' payKey = L.Addr L.Testnet (TL.mkCred payKey) L.StakeRefNull
+      mkAddr' :: TL.KeyPair 'L.Payment -> L.Addr
+      mkAddr' payKey = L.Addr L.Testnet (TL.mkCredential payKey) L.StakeRefNull
 
       -- \| genesis transaction ID
-      genesisTxId :: L.TxId L.StandardCrypto
+      genesisTxId :: L.TxId
       genesisTxId = L.TxId $ L.unsafeMakeSafeHash dummyHash
 
       -- Hash for genesis transaction
@@ -396,13 +400,25 @@ getCurrentSlot = gets $ L.ledgerSlotNo . (^. chainState . ledgerEnv)
 
 getStakePools ::
   ( Monad m
+  , L.MinVersion <= Core.ProtVerHigh (CardanoLedgerEra era)
+  , L.MinVersion <= Core.ProtVerLow (CardanoLedgerEra era)
+  , Core.ProtVerLow (CardanoLedgerEra era) <= Core.ProtVerHigh (CardanoLedgerEra era)
+  , CmpNat (Core.ProtVerHigh (CardanoLedgerEra era)) L.MaxVersion ~ LT
+  , CmpNat (Core.ProtVerLow (CardanoLedgerEra era)) L.MaxVersion ~ LT
+  , Share (L.CertState (CardanoLedgerEra era))
+      ~ ( Interns (L.Credential L.Staking)
+        , Interns (L.KeyHash L.StakePool)
+        , Interns (L.Credential L.DRepRole)
+        , Interns (L.Credential L.HotCommitteeRole)
+        )
+  , L.EraCertState (CardanoLedgerEra era)
   ) =>
-  ClbT era m (Set (L.KeyHash 'L.StakePool L.StandardCrypto))
+  ClbT era m (Set (L.KeyHash 'L.StakePool))
 getStakePools =
   gets $
     M.keysSet
       . L.psStakePoolParams
-      . L.certPState
+      . (^. L.certPStateL)
       . L.lsCertState
       . (^. chainState . ledgerState)
 
@@ -433,7 +449,7 @@ appendLog slot val (Log xs) = Log (xs Seq.|> (slot, val))
 -- Read
 getUtxosAt ::
   (Monad m, Core.EraTxOut (CardanoLedgerEra era)) =>
-  L.Addr StandardCrypto ->
+  L.Addr ->
   ClbT era m (L.UTxO (CardanoLedgerEra era))
 getUtxosAt addr = do
   allUTxOs <- gets currentUtxoState
@@ -443,7 +459,7 @@ getUtxosAt addr = do
 -- Returns the complete utx state in the emulated ledger state
 currentUtxoState :: ClbState era -> L.UTxO (CardanoLedgerEra era)
 currentUtxoState =
-  (^. chainState . ledgerState . L.lsUTxOStateL . L.utxosUtxoL)
+  (^. chainState . ledgerState . L.lsUTxOStateL . L.utxoL)
 
 -- | Read all TxOutRefs that belong to given address.
 txOutRefAt ::
@@ -499,7 +515,14 @@ Also:
 -}
 submitTx ::
   forall era m.
-  (Monad m, IsCardanoLedgerEra era) =>
+  ( Monad m
+  , IsCardanoLedgerEra era
+  , STS (EraRule "LEDGER" (C.ShelleyLedgerEra era))
+  , BaseM (EraRule "LEDGER" (CardanoLedgerEra era)) ~ L.ShelleyBase
+  , Environment (EraRule "LEDGER" (C.ShelleyLedgerEra era)) ~ L.MempoolEnv (C.ShelleyLedgerEra era)
+  , Core.Tx (C.ShelleyLedgerEra era) ~ Signal (EraRule "LEDGER" (C.ShelleyLedgerEra era))
+  , State (EraRule "LEDGER" (C.ShelleyLedgerEra era)) ~ L.MempoolState (C.ShelleyLedgerEra era)
+  ) =>
   C.Tx era ->
   ClbT era m (ValidationResult era)
 submitTx apiTx@(C.ShelleyTx _ tx) = do
@@ -517,7 +540,13 @@ submitTx apiTx@(C.ShelleyTx _ tx) = do
 
 -- | Validate a tx against 'EmulatedLedgerState' given some 'Globals'.
 validateTx ::
-  (IsCardanoLedgerEra era) =>
+  ( IsCardanoLedgerEra era
+  , STS (EraRule "LEDGER" (C.ShelleyLedgerEra era))
+  , BaseM (EraRule "LEDGER" (CardanoLedgerEra era)) ~ L.ShelleyBase
+  , Environment (EraRule "LEDGER" (C.ShelleyLedgerEra era)) ~ L.MempoolEnv (C.ShelleyLedgerEra era)
+  , Core.Tx (C.ShelleyLedgerEra era) ~ Signal (EraRule "LEDGER" (C.ShelleyLedgerEra era))
+  , State (EraRule "LEDGER" (C.ShelleyLedgerEra era)) ~ L.MempoolState (C.ShelleyLedgerEra era)
+  ) =>
   Globals ->
   EmulatedLedgerState era ->
   C.Tx era ->
@@ -567,9 +596,16 @@ fromCardanoScriptData = PV1.dataToBuiltinData . C.toPlutusData
 
 datumHash :: PV2.Datum -> PV2.DatumHash
 datumHash (PV2.Datum (PV2.BuiltinData dat)) =
-  transDataHash $ L.hashData $ L.Data @(L.AlonzoEra L.StandardCrypto) dat
+  transDataHash $ L.hashData $ L.Data @L.AlonzoEra dat
 
-dumpUtxoState :: forall m era. (IsCardanoLedgerEra era, Monad m) => ClbT era m ()
+dumpUtxoState ::
+  forall m era.
+  ( IsCardanoLedgerEra era
+  , Monad m
+  , Show (L.CertState (C.ShelleyLedgerEra era))
+  , Show (InstantStake (C.ShelleyLedgerEra era))
+  ) =>
+  ClbT era m ()
 dumpUtxoState = do
   s <- gets (^. chainState . ledgerState)
   logInfo $ LogEntry Info $ ppShow s
@@ -602,8 +638,14 @@ Validates a transaction against a 'EmulatedLedgerState' and returns the
 updated state and the transaction that "made it to the ledger/state".
 -}
 applyTx ::
-  forall era stsUsed.
-  (stsUsed ~ EraRule "LEDGER" (CardanoLedgerEra era), IsCardanoLedgerEra era) =>
+  forall era.
+  ( STS (EraRule "LEDGER" (CardanoLedgerEra era))
+  , IsCardanoLedgerEra era
+  , BaseM (EraRule "LEDGER" (CardanoLedgerEra era)) ~ L.ShelleyBase
+  , Environment (EraRule "LEDGER" (C.ShelleyLedgerEra era)) ~ L.MempoolEnv (C.ShelleyLedgerEra era)
+  , Core.Tx (C.ShelleyLedgerEra era) ~ Signal (EraRule "LEDGER" (C.ShelleyLedgerEra era))
+  , State (EraRule "LEDGER" (C.ShelleyLedgerEra era)) ~ L.MempoolState (C.ShelleyLedgerEra era)
+  ) =>
   ValidationPolicy ->
   L.Globals ->
   EmulatedLedgerState era ->
@@ -613,7 +655,7 @@ applyTx asoValidation globals currState tx = do
   newState <-
     left L.ApplyTxError
       $ flip runReader globals
-        . applySTSOptsEither @stsUsed opts
+        . applySTSOptsEither @(EraRule "LEDGER" (CardanoLedgerEra era)) opts
       $ TRC (currState ^. ledgerEnv, currState ^. ledgerState, tx)
   let vtx = OnChainTx $ L.unsafeMakeValidated tx
   pure (currState & ledgerState .~ newState, vtx)
@@ -630,7 +672,7 @@ applyTx asoValidation globals currState tx = do
 --------------------------------------------------------------------------------
 
 -- | Create key pair from an integer (deterministic)
-intToKeyPair :: Integer -> TL.KeyPair r L.StandardCrypto
+intToKeyPair :: Integer -> TL.KeyPair r
 intToKeyPair n = TL.KeyPair vk sk
   where
     sk = Crypto.genKeyDSIGN $ mkSeedFromInteger n
