@@ -25,10 +25,10 @@ import Cardano.Api.Address (AddressInEra)
 import Cardano.BM.Data.Trace (Trace)
 import Cardano.Binary qualified as CBOR
 import Cardano.Chain.Slotting (EpochSlots (..))
+import qualified Network.TypedProtocol.Stateful.Codec as Stateful
 import Cardano.Ledger.Api.Transition (EraTransition)
 import Cardano.Ledger.Block qualified as CL
 import Cardano.Ledger.Core qualified as Core
-import Cardano.Ledger.Era qualified as CL
 import Cardano.Ledger.Shelley.API (
   Coin (Coin),
   Nonce (NeutralNonce),
@@ -130,6 +130,7 @@ import Test.Cardano.Ledger.Shelley.Constants (defaultConstants)
 import Test.Cardano.Ledger.Shelley.Generator.Presets (coreNodeKeys)
 import Test.Cardano.Ledger.Shelley.Serialisation.EraIndepGenerators ()
 import Test.Cardano.Protocol.TPraos.Create (mkBlock, mkOCert)
+import qualified Cardano.Ledger.Shelley.Core as CL
 
 {- | In addition to state handled by CLB emulator as a library ('ClbState')
 this data type introduces additional things that are involved when the
@@ -506,12 +507,13 @@ txSubmissionCodec = cTxSubmissionCodec nodeToClientCodecs
 
 stateQueryCodec ::
   (block ~ CardanoBlock StandardCrypto) =>
-  Codec
+  Stateful.Codec
     (StateQuery.LocalStateQuery block (Point block) (Query block))
     DeserialiseFailure
+    StateQuery.State
     IO
     BSL.ByteString
-stateQueryCodec = cStateQueryCodec nodeToClientCodecs
+stateQueryCodec = cStateQueryCodec (nodeToClientCodecs @IO)
 
 toCardanoBlock ::
   Ouroboros.Tip (CardanoBlock StandardCrypto) -> Block ConwayEra -> IO (CardanoBlock StandardCrypto)

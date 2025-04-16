@@ -55,7 +55,7 @@ library
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api:{cardano-api, internal} ^>=10.1
+    , cardano-api:{cardano-api, internal}
     , cardano-binary
     , cardano-data
     , cardano-ledger-api
@@ -69,6 +69,7 @@ library
     , io-classes
     , iohk-monitoring
     , memory
+    , network-mux
     , optparse-applicative-fork
     , ouroboros-consensus
     , ouroboros-consensus-cardano
@@ -82,6 +83,7 @@ library
     , serialise
     , strict-sop-core
     , typed-protocols
+    , typed-protocols-stateful
 
   ------------------------
   -- Non-IOG dependencies

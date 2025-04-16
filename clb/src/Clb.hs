@@ -528,9 +528,10 @@ txInlineDatums txb =
   let C.TxBodyContent {txOuts} = C.getTxBodyContent txb
       inlineDatums = flip mapMaybe txOuts $
         \(C.TxOut _ _ d _) -> case d of
-          C.TxOutDatumInTx _ sd -> Just sd
+          C.TxOutDatumNone -> Nothing
+          C.TxOutDatumHash _ _ -> Nothing
           C.TxOutDatumInline _ sd -> Just sd
-          _ -> Nothing
+          C.TxOutSupplementalDatum _ _ -> Nothing
       datums =
         M.fromList
           ( (\d -> (datumHash d, d))
