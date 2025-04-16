@@ -62,9 +62,9 @@
               tools = {
                 cabal = { };
                 haskell-language-server = { };
-                hlint = { version = "3.6.1"; };
+                hlint = { version = "3.8"; };
                 cabal-fmt = { };
-                fourmolu = { version = "0.14.0.0"; };
+                fourmolu = { version = "0.17.0.0"; };
                 hspec-discover = { };
               };
             };

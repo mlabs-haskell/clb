@@ -13,16 +13,20 @@ module Clb.EmulatedLedgerState (
   getSlot,
 ) where
 
+import Cardano.Api.Internal.Eon.ShelleyBasedEra (ShelleyLedgerEra)
 import Cardano.Ledger.Api qualified as L
 import Cardano.Ledger.Api.Transition (tcInitialStakingL)
 import Cardano.Ledger.Api.Transition qualified as L
 import Cardano.Ledger.Shelley.API qualified as L
 import Cardano.Ledger.Shelley.LedgerState qualified as L
+import Cardano.Ledger.State (EraStake (InstantStake))
 import Cardano.Slotting.Slot (SlotNo (SlotNo))
 import Clb.Era (CardanoLedgerEra, IsCardanoLedgerEra)
 import Clb.Params (PParams, TransitionConfig)
 import Control.Lens (makeLenses, over, (^.))
+import Control.Lens.Setter ((.~))
 import Data.Default (Default, def)
+import Data.Function ((&))
 import Data.ListMap qualified as ListMap
 import Data.Map.Strict qualified as Map
 
@@ -35,7 +39,7 @@ data EmulatedLedgerState era = EmulatedLedgerState
   , _ledgerState :: !(L.MempoolState (CardanoLedgerEra era))
   }
 
-deriving instance (IsCardanoLedgerEra era) => Show (EmulatedLedgerState era)
+deriving instance (IsCardanoLedgerEra era, Show (L.CertState (ShelleyLedgerEra era)), Show (InstantStake (ShelleyLedgerEra era))) => Show (EmulatedLedgerState era)
 
 makeLenses ''EmulatedLedgerState
 
@@ -60,12 +64,11 @@ initialState params tc =
                 , L.ledgerIx = minBound
                 , L.ledgerPp = params
                 , L.ledgerAccount = L.AccountState (L.Coin 0) (L.Coin 0)
-                , L.ledgerMempool = False
                 }
           , _ledgerState =
               L.LedgerState
                 { lsUTxOState = L.smartUTxOState params mempty (L.Coin 0) (L.Coin 0) def (L.Coin 0)
-                , lsCertState = def {L.certPState = pState'}
+                , lsCertState = def & L.certPStateL .~ pState'
                 }
           }
       pState' :: L.PState (CardanoLedgerEra era) =
@@ -102,6 +105,7 @@ getSlot (EmulatedLedgerState L.LedgerEnv {ledgerSlotNo = SlotNo s} _) = fromInte
 setUtxo ::
   ( L.EraTxOut (CardanoLedgerEra era)
   , Default (L.GovState (CardanoLedgerEra era))
+  , EraStake (CardanoLedgerEra era)
   ) =>
   L.PParams (CardanoLedgerEra era) ->
   L.UTxO (CardanoLedgerEra era) ->

@@ -55,7 +55,7 @@ library
   -- Other IOG dependencies
   --------------------------
   build-depends:
-    , cardano-api:{cardano-api, internal}
+    , cardano-api                                                 ^>=10.13.1
     , cardano-binary
     , cardano-data
     , cardano-ledger-api

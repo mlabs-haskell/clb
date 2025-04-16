@@ -1,9 +1,8 @@
 module Cardano.Node.Socket.Emulator.Params where
 
 import Cardano.Api (ConwayEra)
-import Cardano.Api.Genesis (ShelleyGenesis)
+import Cardano.Api.Shelley (ShelleyGenesis)
 import Cardano.Ledger.Api.Transition qualified as L
-import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Node.Socket.Emulator.Types
 import Clb (ClbConfig)
 import Clb.Config (paramsFromConfig)
@@ -11,7 +10,7 @@ import Clb.Params (emulatorAlonzoGenesisDefaults, emulatorConwayGenesisDefaults,
 import Data.Aeson (FromJSON, eitherDecode)
 import Data.ByteString.Lazy qualified as BSL
 
-type ShelleyConfigUpdater = ShelleyGenesis StandardCrypto -> ShelleyGenesis StandardCrypto
+type ShelleyConfigUpdater = ShelleyGenesis -> ShelleyGenesis
 
 fromNodeServerConfig :: ShelleyConfigUpdater -> NodeServerConfig -> IO (ClbConfig ConwayEra)
 fromNodeServerConfig updateShelley NodeServerConfig {nscShelleyGenesisPath, nscAlonzoGenesisPath, nscConwayGenesisPath} = do

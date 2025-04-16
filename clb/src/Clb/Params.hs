@@ -48,7 +48,7 @@ emulatorProtocolMajorVersion = L.natVersion @9
     * 'sgInitialFunds' to have any money in the system
     * 'sgMaxLovelaceSupply' must be at least the sum of the 'sgInitialFunds'
 -}
-emulatorShelleyGenesisDefaults :: C.ShelleyGenesis C.StandardCrypto
+emulatorShelleyGenesisDefaults :: C.ShelleyGenesis
 emulatorShelleyGenesisDefaults =
   C.shelleyGenesisDefaults
     { C.sgNetworkMagic = case testNetworkMagic of C.NetworkMagic nm -> nm
@@ -74,7 +74,7 @@ emulatorShelleyGenesisDefaults =
 defaultAlonzoParams' :: PParams AlonzoEra
 defaultAlonzoParams' =
   let
-    app :: Alonzo.AlonzoPParams Identity (L.AlonzoEra L.StandardCrypto) =
+    app :: Alonzo.AlonzoPParams Identity L.AlonzoEra =
       Alonzo.AlonzoPParams
         { Alonzo.appMinFeeA = L.Coin 44
         , Alonzo.appMinFeeB = L.Coin 155381
@@ -90,7 +90,7 @@ defaultAlonzoParams' =
         , Alonzo.appTau = rational 0.2
         , Alonzo.appD = rational 0.7
         , Alonzo.appExtraEntropy = L.NeutralNonce
-        , Alonzo.appProtocolVersion = L.ProtVer {L.pvMajor = L.eraProtVerHigh @(L.AlonzoEra L.StandardCrypto), L.pvMinor = 0}
+        , Alonzo.appProtocolVersion = L.ProtVer {L.pvMajor = L.eraProtVerHigh @L.AlonzoEra, L.pvMinor = 0}
         , Alonzo.appMinPoolCost = L.Coin 340_000_000
         , Alonzo.appCoinsPerUTxOWord = L.CoinPerWord (L.Coin 34482) -- When updated to babbage, it will divide it by 8 and round down, thus giving correct value.
         , Alonzo.appCostModels = defaultCostModels
@@ -206,7 +206,7 @@ defaultConwayParams =
               L.ProtVer {pvMajor = L.eraProtVerHigh @(CardanoLedgerEra C.ConwayEra), pvMinor = 0}
           }
 
-emulatorConwayGenesisDefaults :: C.ConwayGenesis C.StandardCrypto
+emulatorConwayGenesisDefaults :: C.ConwayGenesis
 emulatorConwayGenesisDefaults = C.conwayGenesisDefaults
 
 -- Transition Config
