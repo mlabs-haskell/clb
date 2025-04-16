@@ -10,7 +10,7 @@ module Clb.Era (
   DefaultEmulatorEra,
 ) where
 
-import Cardano.Api.Eras (CardanoLedgerEra)
+import Cardano.Api.Internal.Eras (CardanoLedgerEra)
 import Cardano.Api.Shelley (
   AlonzoEra,
   BabbageEra,
@@ -25,12 +25,11 @@ import Cardano.Ledger.Shelley.API (ApplyTx)
 import Data.Default (Default)
 
 {- | Helper class for constraining the 'CardanoLedgerEra' closed type family.
-Ensures user chosen era (from Cardano.Api.Eras) is valid for usage with CLB.
+Ensures user chosen era (from Cardano.Api.Internals.Eras) is valid for usage with CLB.
 -}
 class
   ( ledgerEra ~ CardanoLedgerEra era
   , ledgerEra ~ ShelleyLedgerEra era
-  , L.EraCrypto ledgerEra ~ L.StandardCrypto
   , L.EraTxOut ledgerEra
   , ApplyTx ledgerEra
   , Default (L.GovState ledgerEra)
@@ -45,11 +44,11 @@ type IsCardanoLedgerEra era = IsCardanoLedgerEra' era (CardanoLedgerEra era)
 
 -- The `era` param should be the era to add (Mary onwards)
 -- The `ledgerEra` param should be equal to 'CardanoLedgerEra era'. Look up its
--- definition in "Cardano.Api.Eras"
-instance IsCardanoLedgerEra' MaryEra (L.MaryEra L.StandardCrypto)
-instance IsCardanoLedgerEra' AlonzoEra (L.AlonzoEra L.StandardCrypto)
-instance IsCardanoLedgerEra' BabbageEra (L.BabbageEra L.StandardCrypto)
-instance IsCardanoLedgerEra' ConwayEra (L.ConwayEra L.StandardCrypto)
+-- definition in "Cardano.Api.Internals.Eras"
+instance IsCardanoLedgerEra' MaryEra L.MaryEra
+instance IsCardanoLedgerEra' AlonzoEra L.AlonzoEra
+instance IsCardanoLedgerEra' BabbageEra L.BabbageEra
+instance IsCardanoLedgerEra' ConwayEra L.ConwayEra
 
 -- NOTE: Add more eras here as hardforks happen.
 

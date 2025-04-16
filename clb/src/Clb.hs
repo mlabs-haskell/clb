@@ -150,6 +150,7 @@ import Data.Function (on)
 import Data.List
 import Data.Map qualified as M
 
+import Cardano.Ledger.State (InstantStake)
 import Data.Maybe (mapMaybe)
 import Data.Sequence (Seq (..))
 import Data.Sequence qualified as Seq
@@ -192,7 +193,11 @@ data ValidationResult era
     Success !(EmulatedLedgerState era) !(OnChainTx era)
 
 deriving stock instance
-  (IsCardanoLedgerEra era, Show (Core.Tx (CardanoLedgerEra era))) =>
+  ( IsCardanoLedgerEra era
+  , Show (Core.Tx (CardanoLedgerEra era))
+  , Show (L.CertState (C.ShelleyLedgerEra era))
+  , Show (InstantStake (C.ShelleyLedgerEra era))
+  ) =>
   Show (ValidationResult era)
 
 --------------------------------------------------------------------------------
@@ -391,7 +396,6 @@ getCurrentSlot = gets $ L.ledgerSlotNo . (^. chainState . ledgerEnv)
 
 getStakePools ::
   ( Monad m
-  , Core.EraCrypto (CardanoLedgerEra era) ~ L.StandardCrypto
   ) =>
   ClbT era m (Set (L.KeyHash 'L.StakePool L.StandardCrypto))
 getStakePools =
@@ -429,7 +433,7 @@ appendLog slot val (Log xs) = Log (xs Seq.|> (slot, val))
 -- Read
 getUtxosAt ::
   (Monad m, Core.EraTxOut (CardanoLedgerEra era)) =>
-  L.Addr (L.EraCrypto (CardanoLedgerEra era)) ->
+  L.Addr StandardCrypto ->
   ClbT era m (L.UTxO (CardanoLedgerEra era))
 getUtxosAt addr = do
   allUTxOs <- gets currentUtxoState
@@ -480,10 +484,11 @@ getGlobals :: (Monad m, IsCardanoLedgerEra era) => ClbT era m Globals
 getGlobals = do
   startTime <- gets (scSlotZeroTime . clbConfigSlotConfig . _clbConfig)
   L.mkShelleyGlobals
-      ( emulatorShelleyGenesisDefaults
-          { L.sgSystemStart = posixTimeToUTCTime startTime
-          }
-      ) <$> getEpochInfo
+    ( emulatorShelleyGenesisDefaults
+        { L.sgSystemStart = posixTimeToUTCTime startTime
+        }
+    )
+    <$> getEpochInfo
 
 {- | The main tx submission mechanism (for "as a library mode").
 Takes a transaction, validates it against the latest blockchain state.

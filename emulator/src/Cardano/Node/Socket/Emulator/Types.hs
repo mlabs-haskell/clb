@@ -519,7 +519,7 @@ toCardanoBlock ::
   Ouroboros.Tip (CardanoBlock StandardCrypto) -> Block ConwayEra -> IO (CardanoBlock StandardCrypto)
 toCardanoBlock Ouroboros.TipGenesis _ = error "toCardanoBlock: TipGenesis not supported"
 toCardanoBlock (Ouroboros.Tip curSlotNo _ curBlockNo) block = do
-  prevHash <- generate (arbitrary :: Gen (HashHeader (OC.EraCrypto (OC.ConwayEra StandardCrypto))))
+  prevHash <- generate (arbitrary :: Gen (HashHeader StandardCrypto))
   let allPoolKeys = snd $ head $ coreNodeKeys defaultConstants
       kesPeriod = 1
       keyRegKesPeriod = 1

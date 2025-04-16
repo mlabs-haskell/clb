@@ -7,7 +7,7 @@
 module Cardano.Node.Socket.Emulator.Query (HandleQuery (..)) where
 
 import Cardano.Api qualified as Api
-import Cardano.Api.Eras qualified as C
+import Cardano.Api.Internal.Eras qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Data.Trace (Trace)
 import Cardano.Ledger.Api.Transition qualified as L
