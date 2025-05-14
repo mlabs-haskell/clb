@@ -18,13 +18,16 @@ module Clb.Config (
 ) where
 
 import Cardano.Api qualified as C
-import Cardano.Api.NetworkId qualified as C
 import Cardano.Api.Shelley qualified as C
+import Cardano.Chain.Genesis qualified as Byron (mainnetProtocolMagicId)
+import Cardano.Crypto.ProtocolMagic qualified as Byron (ProtocolMagicId (..))
 import Cardano.Ledger.Alonzo.Genesis qualified as Alonzo
 import Cardano.Ledger.Alonzo.PParams qualified as Alonzo
 import Cardano.Ledger.Alonzo.Transition qualified as T
 import Cardano.Ledger.Api qualified as L
 import Cardano.Ledger.Babbage.Transition qualified as T
+import Cardano.Ledger.BaseTypes qualified as Shelley (Network (..))
+import Cardano.Ledger.BaseTypes.NonZero (NonZero (unNonZero))
 import Cardano.Ledger.Conway.Transition qualified as T
 import Cardano.Ledger.Mary.Transition qualified as T
 import Cardano.Ledger.Shelley.API qualified as L
@@ -136,12 +139,24 @@ paramsFromConfig tc =
               getPOSIXTime $ nominalDiffTimeToPOSIXTime $ L.fromNominalDiffTimeMicro $ L.sgSlotLength sg
           }
     , clbConfigProtocol = tc ^. T.tcInitialPParamsG
-    , clbConfigNetworkId = C.fromShelleyNetwork (L.sgNetworkId sg) (C.NetworkMagic $ L.sgNetworkMagic sg)
+    , clbConfigNetworkId = fromShelleyNetwork (L.sgNetworkId sg) (C.NetworkMagic $ L.sgNetworkMagic sg)
     , clbConfigCheckLimits = ErrorLimits -- TODO: https://github.com/mlabs-haskell/clb/issues/50
     , clbConfigConfig = tc
     }
   where
     sg = tc ^. T.tcShelleyGenesisL
+
+fromShelleyNetwork :: Shelley.Network -> C.NetworkMagic -> C.NetworkId
+fromShelleyNetwork Shelley.Testnet nm = C.Testnet nm
+fromShelleyNetwork Shelley.Mainnet nm
+  | nm == mainnetNetworkMagic = C.Mainnet
+  | otherwise = error "fromShelleyNetwork Mainnet: wrong mainnet network magic"
+
+mainnetNetworkMagic :: C.NetworkMagic
+mainnetNetworkMagic =
+  C.NetworkMagic
+    . Byron.unProtocolMagicId
+    $ Byron.mainnetProtocolMagicId
 
 -- | Do not check for limits
 skipLimits :: ClbConfig era -> ClbConfig era
@@ -157,4 +172,4 @@ forceLimits cfg = cfg {clbConfigCheckLimits = ErrorLimits}
 
 keptBlocks :: (T.EraTransition (CardanoLedgerEra era)) => ClbConfig era -> Integer
 keptBlocks ClbConfig {clbConfigConfig} =
-  fromIntegral $ L.sgSecurityParam (clbConfigConfig ^. T.tcShelleyGenesisL)
+  fromIntegral $ unNonZero $ L.sgSecurityParam (clbConfigConfig ^. T.tcShelleyGenesisL)
