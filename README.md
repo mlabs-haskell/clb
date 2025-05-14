@@ -2,8 +2,8 @@
 
 Welcome to the CLB!
 
-CLB is a two-in-one Cardano emulator - a Haskell library and an executable.
-Learn more in [docs](https://mlabs-haskell.github.io/clb-docs).
+CLB is a Cardano emulator, provided as a Haskell library. Learn more in the
+[docs](https://mlabs-haskell.github.io/clb-docs).
 
 CLB was developed by [MLabs](https://www.mlabs.city/)
 in Fund10 of [Project Catalyst](https://milestones.projectcatalyst.io/projects/1000118).
