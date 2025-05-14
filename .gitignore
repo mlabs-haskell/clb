@@ -29,3 +29,6 @@ TODO.md
 
 # pre-commit hooks
 .pre-commit-config.yaml
+
+# Neovim local config
+.nvimrc
