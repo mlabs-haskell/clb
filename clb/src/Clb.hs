@@ -20,6 +20,7 @@ module Clb (
 
   -- * CLB Runner
   runClb,
+  runClbT,
   initClb,
 
   -- * Actions
@@ -135,7 +136,7 @@ import Control.Lens (makeLenses, over, (&), (.~), (^.))
 import Control.Monad (when)
 import Control.Monad.Identity (Identity)
 import Control.Monad.Reader (runReader)
-import Control.Monad.State (MonadState, StateT, gets, modify, modify', runState)
+import Control.Monad.State (MonadState, StateT, gets, modify, modify', runState, runStateT)
 import Control.Monad.Trans (MonadIO, MonadTrans)
 import Control.State.Transition (STS (BaseM), SingEP (..), globalAssertionPolicy)
 import Control.State.Transition.Extended (
@@ -328,6 +329,9 @@ makeLenses ''ClbState
 runClb :: Clb era a -> ClbState era -> (a, ClbState era)
 runClb (ClbT act) = runState act
 
+runClbT :: ClbT era m a -> ClbState era -> m (a, ClbState era)
+runClbT (ClbT act) = runStateT act
+
 -- | Init emulator state.
 initClb ::
   forall era.
@@ -478,7 +482,7 @@ txOutRefAt (C.toShelleyAddr -> addr) = gets txOutRefAt'
           Left addr' -> addr == addr'
 
 -- | Read all TxOutRefs that belong to given payment credential.
-txOutRefAtPaymentCred :: (IsCardanoLedgerEra era) => PV1.Credential -> Clb era [PV1.TxOutRef]
+txOutRefAtPaymentCred :: forall era m. (Monad m) => (IsCardanoLedgerEra era) => PV1.Credential -> ClbT era m [PV1.TxOutRef]
 txOutRefAtPaymentCred cred = gets txOutRefAtPaymentCredState
   where
     txOutRefAtPaymentCredState :: (IsCardanoLedgerEra era) => ClbState era -> [PV1.TxOutRef]
@@ -692,7 +696,7 @@ intToCardanoSk :: Integer -> C.SigningKey C.PaymentKey
 intToCardanoSk n = case intToKeyPair n of
   TL.KeyPair _ sk -> C.PaymentSigningKey sk
 
-waitSlot :: SlotNo -> Clb era ()
+waitSlot :: forall era m. (Monad m) => SlotNo -> ClbT era m ()
 waitSlot slot = do
   currSlot <- getCurrentSlot
   -- TODO: shall we throw?
